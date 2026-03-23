@@ -73,42 +73,29 @@ def run_analysis_thread(state):
 
     analysis_running = True
     try:
-        # Stage 1: Quick MC evaluation (depth 0 = pure rollouts)
-        with game_lock:
-            if game_state is not state:
-                return  # State changed, abort
+        stages = [
+            (0, 300,  "Quick estimate"),
+            (1, 200,  "Depth 1"),
+            (2, 200,  "Depth 2"),
+            (2, 500,  "Depth 2 refined"),
+            (2, 1000, "Depth 2 high-confidence"),
+            (3, 100,  "Depth 3"),
+            (3, 200,  "Depth 3 refined"),
+        ]
 
-        engine0 = SearchEngine(max_depth=0, mc_rollouts=500)
-        random.seed(int(time.time()))
-        r0 = engine0.analyze(state)
-        with game_lock:
-            if game_state is state:
-                analysis_result = r0
-                analysis_depth = 0
+        for depth, mc, label in stages:
+            with game_lock:
+                if game_state is not state:
+                    return  # State changed, abort
 
-        # Stage 2: Depth 1
-        with game_lock:
-            if game_state is not state:
-                return
+            random.seed(int(time.time() * 1000))
+            engine = SearchEngine(max_depth=depth, mc_rollouts=mc)
+            result = engine.analyze(state)
 
-        engine1 = SearchEngine(max_depth=1, mc_rollouts=300)
-        r1 = engine1.analyze(state)
-        with game_lock:
-            if game_state is state:
-                analysis_result = r1
-                analysis_depth = 1
-
-        # Stage 3: Depth 2 (full analysis)
-        with game_lock:
-            if game_state is not state:
-                return
-
-        engine2 = SearchEngine(max_depth=2, mc_rollouts=200)
-        r2 = engine2.analyze(state)
-        with game_lock:
-            if game_state is state:
-                analysis_result = r2
-                analysis_depth = 2
+            with game_lock:
+                if game_state is state:
+                    analysis_result = result
+                    analysis_depth = depth
 
     finally:
         analysis_running = False

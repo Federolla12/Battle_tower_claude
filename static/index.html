@@ -1,342 +1,145 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Gen 3 Battle Engine</title>
 <style>
-:root { --bg: #1a1b26; --bg2: #24283b; --bg3: #2f3347; --fg: #c0caf5; --fg2: #787c99; --accent: #7aa2f7; --green: #9ece6a; --red: #f7768e; --yellow: #e0af68; --orange: #ff9e64; --purple: #bb9af7; }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--fg); min-height: 100vh; }
-.container { max-width: 900px; margin: 0 auto; padding: 16px; }
-h1 { font-size: 18px; font-weight: 500; color: var(--fg2); padding: 12px 0; text-align: center; letter-spacing: 1px; }
-
-/* Eval bar */
-.eval-container { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.eval-bar { flex: 1; height: 28px; background: var(--bg3); border-radius: 4px; overflow: hidden; position: relative; }
-.eval-fill { height: 100%; background: var(--accent); transition: width 0.6s ease; border-radius: 4px 0 0 4px; }
-.eval-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 14px; font-weight: 600; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.5); z-index: 1; }
-.eval-pct { font-size: 20px; font-weight: 600; min-width: 65px; text-align: right; }
-.depth-badge { font-size: 11px; color: var(--fg2); background: var(--bg3); padding: 3px 8px; border-radius: 10px; white-space: nowrap; }
-.depth-badge.running::after { content: ''; display: inline-block; width: 6px; height: 6px; background: var(--green); border-radius: 50%; margin-left: 5px; animation: pulse 1s infinite; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-
-/* Teams */
-.battlefield { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-.team { background: var(--bg2); border-radius: 8px; padding: 14px; }
-.team-header { font-size: 12px; color: var(--fg2); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
-.pokemon { padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; transition: background 0.2s; }
-.pokemon.active { background: var(--bg3); border-left: 3px solid var(--accent); }
-.pokemon.fainted { opacity: 0.35; }
-.pokemon-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-.pokemon-name { font-size: 14px; font-weight: 500; }
-.pokemon-hp-text { font-size: 12px; color: var(--fg2); }
-.hp-bar { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
-.hp-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
-.hp-fill.hp-high { background: var(--green); }
-.hp-fill.hp-mid { background: var(--yellow); }
-.hp-fill.hp-low { background: var(--red); }
-.pokemon-status { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; font-weight: 600; text-transform: uppercase; }
-.st-burn { background: #f7768e33; color: var(--red); }
-.st-paralyze { background: #e0af6833; color: var(--yellow); }
-.st-poison, .st-toxic { background: #bb9af733; color: var(--purple); }
-.st-sleep { background: #787c9933; color: var(--fg2); }
-.st-freeze { background: #7dcfff33; color: #7dcfff; }
-.stat-changes { font-size: 11px; color: var(--fg2); margin-top: 2px; }
-.stat-up { color: var(--green); }
-.stat-down { color: var(--red); }
-.pokemon-meta { font-size: 11px; color: var(--fg2); margin-top: 2px; }
-
-/* Move analysis */
-.analysis { background: var(--bg2); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
-.analysis-header { font-size: 12px; color: var(--fg2); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; }
-.move-row { display: flex; align-items: center; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.15s; margin-bottom: 3px; }
-.move-row:hover { background: var(--bg3); }
-.move-row.best { border-left: 3px solid var(--green); }
-.move-bar { width: 60px; height: 20px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-right: 12px; flex-shrink: 0; }
-.move-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
-.move-name { flex: 1; font-size: 14px; }
-.move-pct { font-size: 14px; font-weight: 600; min-width: 50px; text-align: right; margin-right: 12px; }
-.move-counter { font-size: 12px; color: var(--fg2); min-width: 140px; text-align: right; }
-.forced-switch { padding: 14px; text-align: center; color: var(--yellow); font-size: 14px; }
-
-/* History */
-.history { background: var(--bg2); border-radius: 8px; padding: 14px; max-height: 200px; overflow-y: auto; }
-.history-header { font-size: 12px; color: var(--fg2); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-.history-row { display: grid; grid-template-columns: 30px 1fr 1fr; gap: 8px; padding: 4px 0; font-size: 13px; border-bottom: 1px solid var(--bg3); }
-.history-turn { color: var(--fg2); text-align: center; }
-
-/* Controls */
-.controls { display: flex; gap: 8px; margin-bottom: 16px; justify-content: center; }
-.btn { padding: 8px 20px; border: 1px solid var(--bg3); background: var(--bg2); color: var(--fg); border-radius: 6px; cursor: pointer; font-size: 13px; transition: background 0.15s; }
-.btn:hover { background: var(--bg3); }
-
-/* Winner overlay */
-.winner-banner { text-align: center; padding: 20px; margin-bottom: 16px; border-radius: 8px; font-size: 18px; font-weight: 600; }
-.winner-banner.p1 { background: #9ece6a22; color: var(--green); }
-.winner-banner.p2 { background: #f7768e22; color: var(--red); }
-
-/* Loading */
-.loading { text-align: center; padding: 20px; color: var(--fg2); }
+:root{--bg:#1a1b26;--panel:#24283b;--panel2:#2f3347;--fg:#c0caf5;--dim:#787c99;--accent:#7aa2f7;--green:#9ece6a;--red:#f7768e;--yellow:#e0af68;--orange:#ff9e64;--purple:#bb9af7;--cyan:#7dcfff}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+.layout{display:grid;grid-template-columns:1fr 300px;max-width:1100px;margin:0 auto;min-height:100vh}
+.battle-col{padding:16px 20px}.title{font-size:13px;color:var(--dim);text-align:center;padding:8px 0 14px;letter-spacing:2px;text-transform:uppercase}
+.side{margin-bottom:16px}.side-label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+.active-slot{background:var(--panel);border-radius:10px;padding:14px;margin-bottom:6px}
+.mon-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.mon-name{font-size:17px;font-weight:600}.mon-hp-text{font-size:13px;color:var(--dim)}
+.hp-bar{height:7px;background:var(--bg);border-radius:4px;overflow:hidden;margin-bottom:5px}
+.hp-fill{height:100%;border-radius:4px;transition:width .5s}.hp-g{background:var(--green)}.hp-y{background:var(--yellow)}.hp-r{background:var(--red)}
+.mon-info{font-size:11px;color:var(--dim);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.status-badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;text-transform:uppercase}
+.st-burn{background:#f7768e33;color:var(--red)}.st-paralyze{background:#e0af6833;color:var(--yellow)}
+.st-poison,.st-toxic{background:#bb9af733;color:var(--purple)}.st-sleep{background:#787c9933;color:var(--dim)}.st-freeze{background:#7dcfff33;color:var(--cyan)}
+.su{color:var(--green)}.sd{color:var(--red)}
+.bench{display:flex;gap:5px}.bench-slot{flex:1;background:var(--panel);border-radius:7px;padding:7px 9px}
+.bench-slot.dead{opacity:.25}.bench-name{font-size:12px;font-weight:500;margin-bottom:3px}
+.bench-hp{height:4px;background:var(--bg);border-radius:2px;overflow:hidden}.bench-hp-fill{height:100%;border-radius:2px}
+.moves-section{margin-top:18px}.moves-label{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600}
+.move-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.move-btn{background:var(--panel);border:2px solid var(--panel2);border-radius:8px;padding:12px 14px;cursor:pointer;text-align:left;transition:all .15s;position:relative}
+.move-btn:hover{border-color:var(--accent);background:var(--panel2)}.move-btn.best{border-color:var(--green)}
+.mv-name{font-size:14px;font-weight:500;color:var(--fg)}.mv-type{font-size:10px;color:var(--dim);margin-top:1px}
+.mv-eval{position:absolute;top:10px;right:12px;font-size:14px;font-weight:700}
+.switch-row{display:flex;gap:6px}
+.switch-btn{flex:1;background:var(--panel);border:2px solid var(--panel2);border-radius:8px;padding:9px;cursor:pointer;text-align:center;transition:all .15s}
+.switch-btn:hover{border-color:var(--accent)}.switch-btn.best{border-color:var(--green)}
+.sw-name{font-size:12px;font-weight:500}.sw-hp{font-size:11px;color:var(--dim)}.sw-eval{font-size:12px;font-weight:700;margin-top:2px}
+.switch-btn:disabled{opacity:.25;cursor:default;border-color:var(--panel2)}
+.winner-banner{text-align:center;padding:20px;border-radius:10px;font-size:20px;font-weight:700;margin:16px 0}
+.winner-banner.p1{background:#9ece6a18;color:var(--green);border:2px solid var(--green)}
+.winner-banner.p2{background:#f7768e18;color:var(--red);border:2px solid var(--red)}
+.info-col{background:var(--panel);border-left:1px solid var(--panel2);padding:14px;display:flex;flex-direction:column}
+.eval-section{margin-bottom:14px}.eval-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.eval-title{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.eval-depth{font-size:11px;color:var(--dim);background:var(--panel2);padding:2px 7px;border-radius:8px}
+.eval-depth.running::after{content:'';display:inline-block;width:5px;height:5px;background:var(--green);border-radius:50%;margin-left:4px;animation:bk 1s infinite}
+@keyframes bk{0%,100%{opacity:1}50%{opacity:.2}}
+.eval-bar-h{height:30px;background:var(--red);border-radius:6px;overflow:hidden;position:relative}
+.eval-bar-fill{height:100%;background:var(--green);transition:width .6s}.eval-value{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:14px;font-weight:700;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.engine-line{background:var(--panel2);border-radius:8px;padding:10px 12px;margin-bottom:14px}
+.engine-best{font-size:13px;font-weight:600}.engine-detail{font-size:12px;color:var(--dim);margin-top:3px}.engine-nodes{font-size:11px;color:var(--dim);margin-top:3px}
+.log-section{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.log-title{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.log-entries{flex:1;overflow-y:auto}.log-entry{padding:5px 0;border-bottom:1px solid var(--panel2);font-size:12px;line-height:1.5}
+.log-turn{color:var(--dim);font-size:11px}.log-p1{color:var(--accent)}.log-p2{color:var(--orange)}
+.controls{padding-top:10px;border-top:1px solid var(--panel2)}
+.ctrl-btn{width:100%;padding:8px;border:1px solid var(--panel2);background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:12px}
+.ctrl-btn:hover{background:var(--panel2);color:var(--fg)}
 </style>
 </head>
 <body>
-<div class="container">
-<h1>GEN 3 BATTLE ENGINE</h1>
-
-<div id="winner-banner"></div>
-
-<!-- Eval bar -->
-<div class="eval-container">
-  <div class="eval-bar">
-    <div class="eval-fill" id="eval-fill" style="width: 50%"></div>
-    <div class="eval-label" id="eval-label">—</div>
-  </div>
-  <div class="eval-pct" id="eval-pct">—</div>
-  <div class="depth-badge" id="depth-badge">...</div>
+<div class="layout">
+<div class="battle-col">
+<div class="title">Gen 3 Battle Engine</div>
+<div id="winner"></div>
+<div class="side"><div class="side-label">Opponent</div><div class="active-slot" id="p2a"></div><div class="bench" id="p2b"></div></div>
+<div class="side"><div class="side-label">Your Pokemon</div><div class="active-slot" id="p1a"></div><div class="bench" id="p1b"></div></div>
+<div class="moves-section" id="msec"><div class="moves-label" id="mlabel">What will you do?</div><div class="move-grid" id="mgrid"></div><div class="switch-row" id="srow"></div></div>
 </div>
-
-<!-- Battlefield -->
-<div class="battlefield">
-  <div class="team" id="team-p1"><div class="team-header">Your Team (P1)</div></div>
-  <div class="team" id="team-p2"><div class="team-header">Opponent (P2)</div></div>
-</div>
-
-<!-- Analysis / Move selection -->
-<div class="analysis" id="analysis-panel">
-  <div class="analysis-header">
-    <span>Move Analysis</span>
-    <span id="nodes-info"></span>
-  </div>
-  <div id="moves-list"><div class="loading">Analyzing...</div></div>
-</div>
-
-<!-- Controls -->
-<div class="controls">
-  <button class="btn" onclick="resetGame()">New Game</button>
-</div>
-
-<!-- Move history -->
-<div class="history" id="history-panel">
-  <div class="history-header">Move History</div>
-  <div id="history-list"></div>
+<div class="info-col">
+<div class="eval-section"><div class="eval-header"><span class="eval-title">Evaluation</span><span class="eval-depth" id="edepth">...</span></div><div class="eval-bar-h"><div class="eval-bar-fill" id="efill" style="width:50%"></div><div class="eval-value" id="eval">—</div></div></div>
+<div class="engine-line"><div class="engine-best" id="ebest">Analyzing...</div><div class="engine-detail" id="edetail"></div><div class="engine-nodes" id="enodes"></div></div>
+<div class="log-section"><div class="log-title">Battle Log</div><div class="log-entries" id="log"><div class="log-entry" style="color:var(--dim)">Battle start!</div></div></div>
+<div class="controls"><button class="ctrl-btn" onclick="resetGame()">New Game</button></div>
 </div>
 </div>
-
 <script>
-let polling = null;
-let lastAnalysis = null;
+let poll=null;
+function hpc(p){return p>50?'hp-g':p>20?'hp-y':'hp-r'}
+function ec(p){return p>=50?'var(--green)':p>=35?'var(--accent)':'var(--red)'}
+function sb(s){return s?`<span class="status-badge st-${s}">${s}</span>`:''}
+function st(m){return[['Atk',m.atkStage],['Def',m.defStage],['SpA',m.spaStage],['SpD',m.spdStage],['Spe',m.speStage]].filter(([_,v])=>v).map(([n,v])=>`<span class="${v>0?'su':'sd'}">${n}${v>0?'+':''}${v}</span>`).join(' ')}
 
-function hpClass(pct) {
-  if (pct > 50) return 'hp-high';
-  if (pct > 20) return 'hp-mid';
-  return 'hp-low';
+function rActive(el,m){
+  let p=m.maxHp>0?m.hp/m.maxHp*100:0,info=[];
+  if(m.item&&!m.itemConsumed)info.push(m.item);if(m.substituteHp>0)info.push(`Sub ${m.substituteHp}HP`);
+  if(m.tauntTurns>0)info.push(`Taunt ${m.tauntTurns}t`);if(m.moveLocked)info.push(`Locked: ${m.moveLocked}`);
+  el.innerHTML=`<div class="mon-header"><span class="mon-name">${m.species} ${sb(m.status)}</span><span class="mon-hp-text">${m.alive?`${m.hp}/${m.maxHp}`:'Fainted'}</span></div><div class="hp-bar"><div class="hp-fill ${hpc(p)}" style="width:${p}%"></div></div><div class="mon-info">${info.map(i=>`<span>${i}</span>`).join('')} ${st(m)}</div>`;
+  el.style.opacity=m.alive?1:.3;
 }
 
-function statChanges(mon) {
-  const stages = [
-    ['Atk', mon.atkStage], ['Def', mon.defStage], ['SpA', mon.spaStage],
-    ['SpD', mon.spdStage], ['Spe', mon.speStage]
-  ].filter(([_, v]) => v !== 0);
-  if (!stages.length) return '';
-  return stages.map(([name, v]) =>
-    `<span class="${v > 0 ? 'stat-up' : 'stat-down'}">${name} ${v > 0 ? '+' : ''}${v}</span>`
-  ).join(' ');
+function rBench(el,team){
+  el.innerHTML=team.filter(m=>!m.isActive).map(m=>{let p=m.maxHp>0?m.hp/m.maxHp*100:0;
+    return`<div class="bench-slot${m.alive?'':' dead'}"><div class="bench-name">${m.species}</div><div class="bench-hp"><div class="bench-hp-fill ${hpc(p)}" style="width:${p}%"></div></div><div style="font-size:10px;color:var(--dim);margin-top:2px">${m.alive?m.hp+'/'+m.maxHp:'KO'}</div></div>`}).join('');
 }
 
-function renderPokemon(mon) {
-  const pct = mon.maxHp > 0 ? (mon.hp / mon.maxHp * 100) : 0;
-  const cls = [
-    'pokemon',
-    mon.isActive ? 'active' : '',
-    !mon.alive ? 'fainted' : ''
-  ].filter(Boolean).join(' ');
-
-  let statusHtml = '';
-  if (mon.status) {
-    statusHtml = `<span class="pokemon-status st-${mon.status}">${mon.status}</span>`;
-  }
-
-  let metaHtml = '';
-  const meta = [];
-  if (mon.item && !mon.itemConsumed) meta.push(mon.item);
-  if (mon.substituteHp > 0) meta.push(`Sub: ${mon.substituteHp} HP`);
-  if (mon.tauntTurns > 0) meta.push(`Taunted (${mon.tauntTurns})`);
-  if (mon.moveLocked) meta.push(`Locked: ${mon.moveLocked}`);
-  if (meta.length) metaHtml = `<div class="pokemon-meta">${meta.join(' · ')}</div>`;
-
-  const sc = statChanges(mon);
-  const scHtml = sc ? `<div class="stat-changes">${sc}</div>` : '';
-
-  return `<div class="${cls}">
-    <div class="pokemon-row">
-      <span class="pokemon-name">${mon.species}${statusHtml}</span>
-      <span class="pokemon-hp-text">${mon.alive ? `${mon.hp}/${mon.maxHp}` : 'FAINTED'}</span>
-    </div>
-    <div class="hp-bar"><div class="hp-fill ${hpClass(pct)}" style="width:${pct}%"></div></div>
-    ${scHtml}${metaHtml}
-  </div>`;
+function rMoves(an,state){
+  let sec=document.getElementById('msec'),grid=document.getElementById('mgrid'),sr=document.getElementById('srow'),lab=document.getElementById('mlabel');
+  if(state.isTerminal){sec.style.display='none';return}sec.style.display='block';
+  let act=state.p1.find(m=>m.isActive);
+  if(act&&!act.alive){grid.innerHTML='';lab.textContent='Choose a switch-in:';
+    sr.innerHTML=state.p1.filter(m=>!m.isActive&&m.alive).map(m=>{let idx=state.p1.findIndex(p=>p.species===m.species);
+      return`<button class="switch-btn" onclick="play(['switch',${idx}])"><div class="sw-name">${m.species}</div><div class="sw-hp">${m.hp}/${m.maxHp}</div></button>`}).join('');return}
+  lab.textContent='What will you do?';
+  let ev={};if(an&&an.moves)an.moves.forEach(m=>{ev[m.name]=m});
+  grid.innerHTML=(act?act.moves:[]).map(n=>{let e=ev[n],ps=e?e.winPct+'%':'...',b=e&&e.isBest,c=e?ec(e.winPct):'var(--dim)';
+    return`<button class="move-btn${b?' best':''}" onclick="play(['move','${n}'])"><div class="mv-name">${n}</div><div class="mv-eval" style="color:${c}">${ps}</div></button>`}).join('');
+  sr.innerHTML=state.p1.filter(m=>!m.isActive).map(m=>{let idx=state.p1.findIndex(p=>p.species===m.species),k='Switch→'+m.species,e=ev[k],ps=e?e.winPct+'%':'...',b=e&&e.isBest,c=e?ec(e.winPct):'var(--dim)';
+    return`<button class="switch-btn${b?' best':''}" onclick="play(['switch',${idx}])"${m.alive?'':' disabled'}><div class="sw-name">${m.species}</div><div class="sw-hp">${m.alive?m.hp+'/'+m.maxHp:'KO'}</div><div class="sw-eval" style="color:${c}">${m.alive?ps:''}</div></button>`}).join('');
 }
 
-function renderTeam(containerId, team) {
-  const el = document.getElementById(containerId);
-  const header = el.querySelector('.team-header').outerHTML;
-  el.innerHTML = header + team.map(renderPokemon).join('');
+function rEval(an){
+  let f=document.getElementById('efill'),v=document.getElementById('eval'),d=document.getElementById('edepth'),
+      b=document.getElementById('ebest'),dt=document.getElementById('edetail'),nd=document.getElementById('enodes');
+  if(!an){f.style.width='50%';v.textContent='—';d.textContent='thinking...';d.className='eval-depth running';b.textContent='Analyzing...';dt.textContent='';nd.textContent='';return}
+  let pv=an.positionValue;f.style.width=pv+'%';v.textContent=pv.toFixed(1)+'%';
+  d.textContent='depth '+an.depth+(an.running?'+':'');d.className=an.running?'eval-depth running':'eval-depth';
+  let bm=an.moves.find(m=>m.isBest);
+  if(bm){b.textContent='Best: '+bm.name;b.style.color=ec(bm.winPct);dt.textContent=bm.winPct+'% — opp plays '+bm.counter}
+  nd.textContent=an.nodes.toLocaleString()+' nodes';
 }
 
-function moveColor(pct) {
-  if (pct >= 50) return 'var(--green)';
-  if (pct >= 35) return 'var(--accent)';
-  if (pct >= 20) return 'var(--yellow)';
-  return 'var(--red)';
+function rLog(h){let el=document.getElementById('log');
+  if(!h||!h.length){el.innerHTML='<div class="log-entry" style="color:var(--dim)">Battle start!</div>';return}
+  el.innerHTML=h.map(e=>`<div class="log-entry"><span class="log-turn">T${e.turn+1}</span> <span class="log-p1">${e.p1}</span> <span style="color:var(--dim)">vs</span> <span class="log-p2">${e.p2}</span></div>`).join('');
+  el.scrollTop=el.scrollHeight;
 }
 
-function renderAnalysis(analysis, state) {
-  const list = document.getElementById('moves-list');
-  const nodesInfo = document.getElementById('nodes-info');
+function rWinner(s){let el=document.getElementById('winner');if(!s.isTerminal){el.innerHTML='';return}
+  el.innerHTML=`<div class="winner-banner ${s.winner==='p1'?'p1':'p2'}">${s.winner==='p1'?'You win!':'You lost.'}</div>`}
 
-  if (!analysis) {
-    list.innerHTML = '<div class="loading">Analyzing...</div>';
-    nodesInfo.textContent = '';
-    return;
-  }
+async function fetchState(){try{let r=await fetch('/api/state'),d=await r.json(),
+  a1=d.state.p1.find(m=>m.isActive)||d.state.p1[0],a2=d.state.p2.find(m=>m.isActive)||d.state.p2[0];
+  rActive(document.getElementById('p1a'),a1);rActive(document.getElementById('p2a'),a2);
+  rBench(document.getElementById('p1b'),d.state.p1);rBench(document.getElementById('p2b'),d.state.p2);
+  rEval(d.analysis);rMoves(d.analysis,d.state);rLog(d.history);rWinner(d.state);
+  if(d.analysis&&!d.analysis.running){clearInterval(poll);poll=setInterval(fetchState,3000)}}catch(e){console.error(e)}}
 
-  // Check for forced switch (active mon fainted)
-  const activeMon = state.p1.find(m => m.isActive);
-  if (activeMon && !activeMon.alive) {
-    const benchAlive = state.p1.filter((m, i) => !m.isActive && m.alive);
-    list.innerHTML = '<div class="forced-switch">Your active Pokemon fainted! Choose a switch-in:</div>' +
-      benchAlive.map((m, i) => {
-        const realIdx = state.p1.findIndex(p => p.species === m.species);
-        return `<div class="move-row" onclick="playMove(['switch', ${realIdx}])">
-          <div class="move-name">Switch → ${m.species} (${m.hp}/${m.maxHp})</div>
-        </div>`;
-      }).join('');
-    return;
-  }
+async function play(a){clearInterval(poll);document.getElementById('ebest').textContent='Thinking...';
+  try{await fetch('/api/play',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a})});
+  poll=setInterval(fetchState,500);fetchState()}catch(e){console.error(e)}}
 
-  nodesInfo.textContent = `${analysis.nodes.toLocaleString()} nodes`;
+async function resetGame(){clearInterval(poll);await fetch('/api/reset',{method:'POST'});poll=setInterval(fetchState,500);fetchState()}
 
-  const maxPct = Math.max(...analysis.moves.map(m => m.winPct), 1);
-
-  list.innerHTML = analysis.moves.map(m => {
-    const barW = (m.winPct / Math.max(maxPct, 50)) * 100;
-    return `<div class="move-row ${m.isBest ? 'best' : ''}" onclick="playMove(${JSON.stringify(m.action)})">
-      <div class="move-bar"><div class="move-bar-fill" style="width:${barW}%;background:${moveColor(m.winPct)}"></div></div>
-      <div class="move-pct" style="color:${moveColor(m.winPct)}">${m.winPct}%</div>
-      <div class="move-name">${m.name}</div>
-      <div class="move-counter">vs ${m.counter}</div>
-    </div>`;
-  }).join('');
-}
-
-function renderEval(analysis) {
-  const fill = document.getElementById('eval-fill');
-  const label = document.getElementById('eval-label');
-  const pct = document.getElementById('eval-pct');
-  const badge = document.getElementById('depth-badge');
-
-  if (!analysis) {
-    fill.style.width = '50%';
-    label.textContent = '—';
-    pct.textContent = '—';
-    badge.textContent = 'thinking...';
-    badge.className = 'depth-badge running';
-    return;
-  }
-
-  const v = analysis.positionValue;
-  fill.style.width = v + '%';
-  fill.style.background = v >= 50 ? 'var(--green)' : 'var(--accent)';
-  label.textContent = `${v.toFixed(1)}%`;
-  pct.textContent = `${v.toFixed(1)}%`;
-  pct.style.color = v >= 50 ? 'var(--green)' : v >= 35 ? 'var(--accent)' : 'var(--red)';
-
-  badge.textContent = `depth ${analysis.depth}`;
-  badge.className = analysis.running ? 'depth-badge running' : 'depth-badge';
-}
-
-function renderHistory(history) {
-  const el = document.getElementById('history-list');
-  if (!history.length) {
-    el.innerHTML = '<div style="color:var(--fg2);font-size:13px;padding:4px 0;">No moves yet</div>';
-    return;
-  }
-  el.innerHTML = history.map(h =>
-    `<div class="history-row">
-      <span class="history-turn">${h.turn + 1}</span>
-      <span>${h.p1}</span>
-      <span>${h.p2}</span>
-    </div>`
-  ).join('');
-}
-
-function renderWinner(state) {
-  const el = document.getElementById('winner-banner');
-  if (!state.isTerminal) {
-    el.innerHTML = '';
-    return;
-  }
-  if (state.winner === 'p1') {
-    el.innerHTML = '<div class="winner-banner p1">You win!</div>';
-  } else {
-    el.innerHTML = '<div class="winner-banner p2">Opponent wins.</div>';
-  }
-}
-
-async function fetchState() {
-  try {
-    const res = await fetch('/api/state');
-    const data = await res.json();
-
-    renderTeam('team-p1', data.state.p1);
-    renderTeam('team-p2', data.state.p2);
-    renderEval(data.analysis);
-    renderAnalysis(data.analysis, data.state);
-    renderHistory(data.history);
-    renderWinner(data.state);
-
-    lastAnalysis = data.analysis;
-
-    // Keep polling if analysis is still running
-    if (data.analysis && !data.analysis.running && !data.state.isTerminal) {
-      // Analysis done — slow down polling
-      clearInterval(polling);
-      polling = setInterval(fetchState, 5000);
-    }
-  } catch (e) {
-    console.error('Fetch error:', e);
-  }
-}
-
-async function playMove(action) {
-  clearInterval(polling);
-  try {
-    const res = await fetch('/api/play', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({action}),
-    });
-    if (res.ok) {
-      // Fast polling during analysis
-      polling = setInterval(fetchState, 800);
-      fetchState();
-    }
-  } catch (e) {
-    console.error('Play error:', e);
-  }
-}
-
-async function resetGame() {
-  clearInterval(polling);
-  await fetch('/api/reset', {method: 'POST'});
-  polling = setInterval(fetchState, 800);
-  fetchState();
-}
-
-// Start
-polling = setInterval(fetchState, 800);
-fetchState();
+poll=setInterval(fetchState,500);fetchState();
 </script>
 </body>
 </html>
