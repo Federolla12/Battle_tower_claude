@@ -4,140 +4,246 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Gen 3 Battle Engine</title>
 <style>
-:root{--bg:#1a1b26;--panel:#24283b;--panel2:#2f3347;--fg:#c0caf5;--dim:#787c99;--accent:#7aa2f7;--green:#9ece6a;--red:#f7768e;--yellow:#e0af68;--orange:#ff9e64;--purple:#bb9af7;--cyan:#7dcfff}
+:root{--bg:#1a1b26;--pn:#24283b;--pn2:#2f3347;--fg:#c0caf5;--dm:#787c99;--ac:#7aa2f7;--gn:#9ece6a;--rd:#f7768e;--yl:#e0af68;--or:#ff9e64;--pu:#bb9af7;--cy:#7dcfff}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-.layout{display:grid;grid-template-columns:1fr 300px;max-width:1100px;margin:0 auto;min-height:100vh}
-.battle-col{padding:16px 20px}.title{font-size:13px;color:var(--dim);text-align:center;padding:8px 0 14px;letter-spacing:2px;text-transform:uppercase}
-.side{margin-bottom:16px}.side-label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
-.active-slot{background:var(--panel);border-radius:10px;padding:14px;margin-bottom:6px}
-.mon-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
-.mon-name{font-size:17px;font-weight:600}.mon-hp-text{font-size:13px;color:var(--dim)}
-.hp-bar{height:7px;background:var(--bg);border-radius:4px;overflow:hidden;margin-bottom:5px}
-.hp-fill{height:100%;border-radius:4px;transition:width .5s}.hp-g{background:var(--green)}.hp-y{background:var(--yellow)}.hp-r{background:var(--red)}
-.mon-info{font-size:11px;color:var(--dim);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.status-badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;text-transform:uppercase}
-.st-burn{background:#f7768e33;color:var(--red)}.st-paralyze{background:#e0af6833;color:var(--yellow)}
-.st-poison,.st-toxic{background:#bb9af733;color:var(--purple)}.st-sleep{background:#787c9933;color:var(--dim)}.st-freeze{background:#7dcfff33;color:var(--cyan)}
-.su{color:var(--green)}.sd{color:var(--red)}
-.bench{display:flex;gap:5px}.bench-slot{flex:1;background:var(--panel);border-radius:7px;padding:7px 9px}
-.bench-slot.dead{opacity:.25}.bench-name{font-size:12px;font-weight:500;margin-bottom:3px}
-.bench-hp{height:4px;background:var(--bg);border-radius:2px;overflow:hidden}.bench-hp-fill{height:100%;border-radius:2px}
-.moves-section{margin-top:18px}.moves-label{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600}
-.move-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
-.move-btn{background:var(--panel);border:2px solid var(--panel2);border-radius:8px;padding:12px 14px;cursor:pointer;text-align:left;transition:all .15s;position:relative}
-.move-btn:hover{border-color:var(--accent);background:var(--panel2)}.move-btn.best{border-color:var(--green)}
-.mv-name{font-size:14px;font-weight:500;color:var(--fg)}.mv-type{font-size:10px;color:var(--dim);margin-top:1px}
-.mv-eval{position:absolute;top:10px;right:12px;font-size:14px;font-weight:700}
-.switch-row{display:flex;gap:6px}
-.switch-btn{flex:1;background:var(--panel);border:2px solid var(--panel2);border-radius:8px;padding:9px;cursor:pointer;text-align:center;transition:all .15s}
-.switch-btn:hover{border-color:var(--accent)}.switch-btn.best{border-color:var(--green)}
-.sw-name{font-size:12px;font-weight:500}.sw-hp{font-size:11px;color:var(--dim)}.sw-eval{font-size:12px;font-weight:700;margin-top:2px}
-.switch-btn:disabled{opacity:.25;cursor:default;border-color:var(--panel2)}
-.winner-banner{text-align:center;padding:20px;border-radius:10px;font-size:20px;font-weight:700;margin:16px 0}
-.winner-banner.p1{background:#9ece6a18;color:var(--green);border:2px solid var(--green)}
-.winner-banner.p2{background:#f7768e18;color:var(--red);border:2px solid var(--red)}
-.info-col{background:var(--panel);border-left:1px solid var(--panel2);padding:14px;display:flex;flex-direction:column}
-.eval-section{margin-bottom:14px}.eval-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.eval-title{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
-.eval-depth{font-size:11px;color:var(--dim);background:var(--panel2);padding:2px 7px;border-radius:8px}
-.eval-depth.running::after{content:'';display:inline-block;width:5px;height:5px;background:var(--green);border-radius:50%;margin-left:4px;animation:bk 1s infinite}
-@keyframes bk{0%,100%{opacity:1}50%{opacity:.2}}
-.eval-bar-h{height:30px;background:var(--red);border-radius:6px;overflow:hidden;position:relative}
-.eval-bar-fill{height:100%;background:var(--green);transition:width .6s}.eval-value{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:14px;font-weight:700;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}
-.engine-line{background:var(--panel2);border-radius:8px;padding:10px 12px;margin-bottom:14px}
-.engine-best{font-size:13px;font-weight:600}.engine-detail{font-size:12px;color:var(--dim);margin-top:3px}.engine-nodes{font-size:11px;color:var(--dim);margin-top:3px}
-.log-section{flex:1;overflow:hidden;display:flex;flex-direction:column}
-.log-title{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
-.log-entries{flex:1;overflow-y:auto}.log-entry{padding:5px 0;border-bottom:1px solid var(--panel2);font-size:12px;line-height:1.5}
-.log-turn{color:var(--dim);font-size:11px}.log-p1{color:var(--accent)}.log-p2{color:var(--orange)}
-.controls{padding-top:10px;border-top:1px solid var(--panel2)}
-.ctrl-btn{width:100%;padding:8px;border:1px solid var(--panel2);background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:12px}
-.ctrl-btn:hover{background:var(--panel2);color:var(--fg)}
+.wrap{display:grid;grid-template-columns:1fr 280px;max-width:1150px;margin:0 auto;min-height:100vh}
+.main{padding:12px 18px}
+.hdr{font-size:12px;color:var(--dm);text-align:center;padding:6px 0 12px;letter-spacing:2px;text-transform:uppercase}
+.field{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.team-box{background:var(--pn);border-radius:10px;padding:12px}
+.team-label{font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:600}
+.act-mon{margin-bottom:8px}
+.mrow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
+.mname{font-size:16px;font-weight:600}.mhp{font-size:12px;color:var(--dm)}
+.hpb{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin-bottom:4px}
+.hpf{height:100%;border-radius:3px;transition:width .4s}
+.hpg{background:var(--gn)}.hpy{background:var(--yl)}.hpr{background:var(--rd)}
+.minfo{font-size:11px;color:var(--dm);display:flex;gap:6px;flex-wrap:wrap}
+.stb{font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;text-transform:uppercase}
+.st-burn{background:#f7768e33;color:var(--rd)}.st-paralyze{background:#e0af6833;color:var(--yl)}
+.st-poison,.st-toxic{background:#bb9af733;color:var(--pu)}.st-sleep{background:#787c9933;color:var(--dm)}.st-freeze{background:#7dcfff33;color:var(--cy)}
+.su{color:var(--gn)}.sd{color:var(--rd)}
+.bench{display:flex;gap:4px;margin-top:6px}
+.bslot{flex:1;background:var(--pn2);border-radius:5px;padding:5px 7px;font-size:11px}
+.bslot.dead{opacity:.25}
+.bname{font-weight:500;margin-bottom:2px}
+.bhp{height:3px;background:var(--bg);border-radius:2px;overflow:hidden}
+.bhpf{height:100%;border-radius:2px}
+
+.pick-area{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px}
+.pick-box{background:var(--pn);border-radius:10px;padding:12px}
+.pick-label{font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:600}
+.pick-sel{font-size:13px;color:var(--ac);font-weight:600;margin-bottom:8px;min-height:20px}
+.mbtn{display:block;width:100%;background:var(--pn2);border:2px solid transparent;border-radius:6px;padding:8px 10px;margin-bottom:4px;cursor:pointer;text-align:left;transition:all .12s;color:var(--fg);font-size:13px}
+.mbtn:hover{border-color:var(--ac);background:var(--bg)}
+.mbtn.sel{border-color:var(--gn);background:#9ece6a12}
+.mbtn.best-hint{border-color:var(--gn)}
+.mbtn .evl{float:right;font-weight:700;font-size:12px}
+.mbtn.sw{font-size:12px;color:var(--dm)}
+.mbtn.sw .sw-hp{font-size:11px;margin-left:4px}
+.mbtn:disabled{opacity:.25;cursor:default;border-color:transparent}
+
+.go-row{text-align:center;margin-bottom:14px}
+.go-btn{padding:10px 40px;background:var(--gn);color:var(--bg);border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:1px;transition:all .15s}
+.go-btn:hover{background:#b9e86f}
+.go-btn:disabled{background:var(--pn2);color:var(--dm);cursor:default}
+
+.winner-banner{text-align:center;padding:16px;border-radius:10px;font-size:18px;font-weight:700;margin:12px 0}
+.winner-banner.p1{background:#9ece6a18;color:var(--gn);border:2px solid var(--gn)}
+.winner-banner.p2{background:#f7768e18;color:var(--rd);border:2px solid var(--rd)}
+
+.sidebar{background:var(--pn);border-left:1px solid var(--pn2);padding:12px;display:flex;flex-direction:column}
+.ev-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.ev-t{font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px}
+.ev-d{font-size:10px;color:var(--dm);background:var(--pn2);padding:2px 6px;border-radius:6px}
+.ev-d.run::after{content:'';display:inline-block;width:4px;height:4px;background:var(--gn);border-radius:50%;margin-left:3px;animation:bk .8s infinite}
+@keyframes bk{0%,100%{opacity:1}50%{opacity:.15}}
+.ev-bar{height:26px;background:var(--rd);border-radius:5px;overflow:hidden;position:relative;margin-bottom:12px}
+.ev-fill{height:100%;background:var(--gn);transition:width .5s}
+.ev-val{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.eline{background:var(--pn2);border-radius:7px;padding:8px 10px;margin-bottom:12px;font-size:12px}
+.ebest{font-weight:600;margin-bottom:2px}
+.edet{color:var(--dm);font-size:11px}
+.log-s{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.log-t{font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+.log-e{flex:1;overflow-y:auto}
+.lentry{padding:4px 0;border-bottom:1px solid var(--pn2);font-size:12px}
+.lt{color:var(--dm);font-size:10px}.lp1{color:var(--ac)}.lp2{color:var(--or)}
+.ctrls{padding-top:8px;border-top:1px solid var(--pn2);display:flex;gap:5px}
+.cbtn{flex:1;padding:7px;border:1px solid var(--pn2);background:transparent;color:var(--dm);border-radius:5px;cursor:pointer;font-size:11px}
+.cbtn:hover{background:var(--pn2);color:var(--fg)}
+.cbtn:disabled{opacity:.3;cursor:default}
+
+.force-sw{background:var(--pn);border-radius:10px;padding:14px;margin-bottom:10px;text-align:center}
+.force-sw .fl{color:var(--yl);font-size:13px;margin-bottom:8px}
 </style>
 </head>
 <body>
-<div class="layout">
-<div class="battle-col">
-<div class="title">Gen 3 Battle Engine</div>
+<div class="wrap">
+<div class="main">
+<div class="hdr">Gen 3 Battle Engine — Analysis Board</div>
 <div id="winner"></div>
-<div class="side"><div class="side-label">Opponent</div><div class="active-slot" id="p2a"></div><div class="bench" id="p2b"></div></div>
-<div class="side"><div class="side-label">Your Pokemon</div><div class="active-slot" id="p1a"></div><div class="bench" id="p1b"></div></div>
-<div class="moves-section" id="msec"><div class="moves-label" id="mlabel">What will you do?</div><div class="move-grid" id="mgrid"></div><div class="switch-row" id="srow"></div></div>
+<div id="force-switch"></div>
+
+<div class="field" id="field">
+  <div class="team-box" id="t1box"><div class="team-label">Player 1 (You)</div><div id="t1"></div></div>
+  <div class="team-box" id="t2box"><div class="team-label">Player 2 (Opponent)</div><div id="t2"></div></div>
 </div>
-<div class="info-col">
-<div class="eval-section"><div class="eval-header"><span class="eval-title">Evaluation</span><span class="eval-depth" id="edepth">...</span></div><div class="eval-bar-h"><div class="eval-bar-fill" id="efill" style="width:50%"></div><div class="eval-value" id="eval">—</div></div></div>
-<div class="engine-line"><div class="engine-best" id="ebest">Analyzing...</div><div class="engine-detail" id="edetail"></div><div class="engine-nodes" id="enodes"></div></div>
-<div class="log-section"><div class="log-title">Battle Log</div><div class="log-entries" id="log"><div class="log-entry" style="color:var(--dim)">Battle start!</div></div></div>
-<div class="controls"><button class="ctrl-btn" onclick="resetGame()">New Game</button></div>
+
+<div class="pick-area" id="pick-area">
+  <div class="pick-box"><div class="pick-label">P1 Move</div><div class="pick-sel" id="p1sel">—</div><div id="p1moves"></div></div>
+  <div class="pick-box"><div class="pick-label">P2 Move</div><div class="pick-sel" id="p2sel">—</div><div id="p2moves"></div></div>
+</div>
+
+<div class="go-row"><button class="go-btn" id="gobtn" disabled onclick="go()">RESOLVE TURN</button></div>
+</div>
+
+<div class="sidebar">
+<div class="ev-hdr"><span class="ev-t">P1 Win Probability</span><span class="ev-d" id="edepth">...</span></div>
+<div class="ev-bar"><div class="ev-fill" id="efill" style="width:50%"></div><div class="ev-val" id="eval">—</div></div>
+<div class="eline"><div class="ebest" id="ebest">Analyzing...</div><div class="edet" id="edet"></div></div>
+<div class="log-s"><div class="log-t">Battle Log</div><div class="log-e" id="log"><div class="lentry" style="color:var(--dm)">Battle start!</div></div></div>
+<div class="ctrls"><button class="cbtn" id="ubtn" onclick="undo()" disabled>Undo</button><button class="cbtn" onclick="reset()">New Game</button></div>
 </div>
 </div>
+
 <script>
-let poll=null;
-function hpc(p){return p>50?'hp-g':p>20?'hp-y':'hp-r'}
-function ec(p){return p>=50?'var(--green)':p>=35?'var(--accent)':'var(--red)'}
-function sb(s){return s?`<span class="status-badge st-${s}">${s}</span>`:''}
-function st(m){return[['Atk',m.atkStage],['Def',m.defStage],['SpA',m.spaStage],['SpD',m.spdStage],['Spe',m.speStage]].filter(([_,v])=>v).map(([n,v])=>`<span class="${v>0?'su':'sd'}">${n}${v>0?'+':''}${v}</span>`).join(' ')}
+let poll=null, selP1=null, selP2=null, curState=null;
 
-function rActive(el,m){
-  let p=m.maxHp>0?m.hp/m.maxHp*100:0,info=[];
-  if(m.item&&!m.itemConsumed)info.push(m.item);if(m.substituteHp>0)info.push(`Sub ${m.substituteHp}HP`);
-  if(m.tauntTurns>0)info.push(`Taunt ${m.tauntTurns}t`);if(m.moveLocked)info.push(`Locked: ${m.moveLocked}`);
-  el.innerHTML=`<div class="mon-header"><span class="mon-name">${m.species} ${sb(m.status)}</span><span class="mon-hp-text">${m.alive?`${m.hp}/${m.maxHp}`:'Fainted'}</span></div><div class="hp-bar"><div class="hp-fill ${hpc(p)}" style="width:${p}%"></div></div><div class="mon-info">${info.map(i=>`<span>${i}</span>`).join('')} ${st(m)}</div>`;
-  el.style.opacity=m.alive?1:.3;
+function hpc(p){return p>50?'hpg':p>20?'hpy':'hpr'}
+function ec(p){return p>=50?'var(--gn)':p>=35?'var(--ac)':'var(--rd)'}
+function sb(s){return s?`<span class="stb st-${s}">${s}</span>`:''}
+function stc(m){return[['Atk',m.atkStage],['Def',m.defStage],['SpA',m.spaStage],['SpD',m.spdStage],['Spe',m.speStage]].filter(([_,v])=>v).map(([n,v])=>`<span class="${v>0?'su':'sd'}">${n}${v>0?'+':''}${v}</span>`).join(' ')}
+
+function rTeam(el,team){
+  let act=team.find(m=>m.isActive)||team[0];
+  let bench=team.filter(m=>!m.isActive);
+  let p=act.maxHp>0?act.hp/act.maxHp*100:0;
+  let info=[];
+  if(act.item&&!act.itemConsumed)info.push(act.item);
+  if(act.substituteHp>0)info.push(`Sub ${act.substituteHp}HP`);
+  if(act.tauntTurns>0)info.push(`Taunt ${act.tauntTurns}t`);
+  if(act.moveLocked)info.push(`Locked: ${act.moveLocked}`);
+
+  let h=`<div class="act-mon" style="opacity:${act.alive?1:.3}">
+    <div class="mrow"><span class="mname">${act.species} ${sb(act.status)}</span><span class="mhp">${act.alive?act.hp+'/'+act.maxHp:'Fainted'}</span></div>
+    <div class="hpb"><div class="hpf ${hpc(p)}" style="width:${p}%"></div></div>
+    <div class="minfo">${info.join(' · ')} ${stc(act)}</div>
+  </div><div class="bench">`;
+  bench.forEach(m=>{let bp=m.maxHp>0?m.hp/m.maxHp*100:0;
+    h+=`<div class="bslot${m.alive?'':' dead'}"><div class="bname">${m.species} ${sb(m.status)}</div><div class="bhp"><div class="bhpf ${hpc(bp)}" style="width:${bp}%"></div></div><div style="font-size:10px;color:var(--dm);margin-top:1px">${m.alive?m.hp+'/'+m.maxHp:'KO'}</div></div>`;
+  });
+  h+='</div>';
+  el.innerHTML=el.querySelector('.team-label').outerHTML+h;
 }
 
-function rBench(el,team){
-  el.innerHTML=team.filter(m=>!m.isActive).map(m=>{let p=m.maxHp>0?m.hp/m.maxHp*100:0;
-    return`<div class="bench-slot${m.alive?'':' dead'}"><div class="bench-name">${m.species}</div><div class="bench-hp"><div class="bench-hp-fill ${hpc(p)}" style="width:${p}%"></div></div><div style="font-size:10px;color:var(--dim);margin-top:2px">${m.alive?m.hp+'/'+m.maxHp:'KO'}</div></div>`}).join('');
+function rMoves(elId,actions,player,analysis){
+  let el=document.getElementById(elId);
+  let evMap={};
+  if(analysis&&analysis.moves&&player==='p1'){
+    analysis.moves.forEach(m=>{evMap[m.name]=m});
+  }
+  let sel=player==='p1'?selP1:selP2;
+  let h='';
+  actions.forEach(a=>{
+    let key=JSON.stringify(a.type==='move'?['move',a.id]:['switch',a.id]);
+    let isSel=sel&&JSON.stringify(sel)===key;
+    let ev=evMap[a.label];
+    let evStr=ev?`<span class="evl" style="color:${ec(ev.winPct)}">${ev.winPct}%</span>`:'';
+    let best=ev&&ev.isBest?' best-hint':'';
+    if(a.type==='move'){
+      h+=`<button class="mbtn${isSel?' sel':''}${best}" onclick="pick('${player}',${key})">${a.label}${evStr}</button>`;
+    } else {
+      h+=`<button class="mbtn sw${isSel?' sel':''}${best}" onclick="pick('${player}',${key})"${a.hp>0?'':' disabled'}>Switch→${a.species} <span class="sw-hp">${a.hp}/${a.maxHp}</span>${evStr}</button>`;
+    }
+  });
+  el.innerHTML=h;
 }
 
-function rMoves(an,state){
-  let sec=document.getElementById('msec'),grid=document.getElementById('mgrid'),sr=document.getElementById('srow'),lab=document.getElementById('mlabel');
-  if(state.isTerminal){sec.style.display='none';return}sec.style.display='block';
-  let act=state.p1.find(m=>m.isActive);
-  if(act&&!act.alive){grid.innerHTML='';lab.textContent='Choose a switch-in:';
-    sr.innerHTML=state.p1.filter(m=>!m.isActive&&m.alive).map(m=>{let idx=state.p1.findIndex(p=>p.species===m.species);
-      return`<button class="switch-btn" onclick="play(['switch',${idx}])"><div class="sw-name">${m.species}</div><div class="sw-hp">${m.hp}/${m.maxHp}</div></button>`}).join('');return}
-  lab.textContent='What will you do?';
-  let ev={};if(an&&an.moves)an.moves.forEach(m=>{ev[m.name]=m});
-  grid.innerHTML=(act?act.moves:[]).map(n=>{let e=ev[n],ps=e?e.winPct+'%':'...',b=e&&e.isBest,c=e?ec(e.winPct):'var(--dim)';
-    return`<button class="move-btn${b?' best':''}" onclick="play(['move','${n}'])"><div class="mv-name">${n}</div><div class="mv-eval" style="color:${c}">${ps}</div></button>`}).join('');
-  sr.innerHTML=state.p1.filter(m=>!m.isActive).map(m=>{let idx=state.p1.findIndex(p=>p.species===m.species),k='Switch→'+m.species,e=ev[k],ps=e?e.winPct+'%':'...',b=e&&e.isBest,c=e?ec(e.winPct):'var(--dim)';
-    return`<button class="switch-btn${b?' best':''}" onclick="play(['switch',${idx}])"${m.alive?'':' disabled'}><div class="sw-name">${m.species}</div><div class="sw-hp">${m.alive?m.hp+'/'+m.maxHp:'KO'}</div><div class="sw-eval" style="color:${c}">${m.alive?ps:''}</div></button>`}).join('');
+function pick(player,action){
+  if(player==='p1'){selP1=action;document.getElementById('p1sel').textContent=action[0]==='move'?action[1]:'Switch→'+curState.p1.find((_,i)=>i===action[1])?.species||action[1]}
+  else{selP2=action;document.getElementById('p2sel').textContent=action[0]==='move'?action[1]:'Switch→'+curState.p2.find((_,i)=>i===action[1])?.species||action[1]}
+  document.getElementById('gobtn').disabled=!(selP1&&selP2);
+  // Re-render to show selection highlight
+  fetchState();
 }
 
 function rEval(an){
   let f=document.getElementById('efill'),v=document.getElementById('eval'),d=document.getElementById('edepth'),
-      b=document.getElementById('ebest'),dt=document.getElementById('edetail'),nd=document.getElementById('enodes');
-  if(!an){f.style.width='50%';v.textContent='—';d.textContent='thinking...';d.className='eval-depth running';b.textContent='Analyzing...';dt.textContent='';nd.textContent='';return}
-  let pv=an.positionValue;f.style.width=pv+'%';v.textContent=pv.toFixed(1)+'%';
-  d.textContent='depth '+an.depth+(an.running?'+':'');d.className=an.running?'eval-depth running':'eval-depth';
+      b=document.getElementById('ebest'),dt=document.getElementById('edet');
+  if(!an){f.style.width='50%';v.textContent='—';d.textContent='thinking...';d.className='ev-d run';b.textContent='Analyzing...';dt.textContent='';return}
+  f.style.width=an.positionValue+'%';v.textContent=an.positionValue.toFixed(1)+'%';
+  d.textContent='d'+an.depth+(an.running?'+':'');d.className=an.running?'ev-d run':'ev-d';
   let bm=an.moves.find(m=>m.isBest);
-  if(bm){b.textContent='Best: '+bm.name;b.style.color=ec(bm.winPct);dt.textContent=bm.winPct+'% — opp plays '+bm.counter}
-  nd.textContent=an.nodes.toLocaleString()+' nodes';
+  if(bm){b.textContent='Best: '+bm.name;b.style.color=ec(bm.winPct);dt.textContent=bm.winPct+'% win — opp best: '+bm.counter+' | '+an.nodes.toLocaleString()+' nodes'}
 }
 
-function rLog(h){let el=document.getElementById('log');
-  if(!h||!h.length){el.innerHTML='<div class="log-entry" style="color:var(--dim)">Battle start!</div>';return}
-  el.innerHTML=h.map(e=>`<div class="log-entry"><span class="log-turn">T${e.turn+1}</span> <span class="log-p1">${e.p1}</span> <span style="color:var(--dim)">vs</span> <span class="log-p2">${e.p2}</span></div>`).join('');
+function rLog(log){
+  let el=document.getElementById('log');
+  if(!log||!log.length){el.innerHTML='<div class="lentry" style="color:var(--dm)">Battle start!</div>';return}
+  el.innerHTML=log.map(e=>`<div class="lentry"><span class="lt">T${e.turn+1}</span> <span class="lp1">${e.p1}</span> <span style="color:var(--dm)">vs</span> <span class="lp2">${e.p2}</span></div>`).join('');
   el.scrollTop=el.scrollHeight;
 }
 
-function rWinner(s){let el=document.getElementById('winner');if(!s.isTerminal){el.innerHTML='';return}
-  el.innerHTML=`<div class="winner-banner ${s.winner==='p1'?'p1':'p2'}">${s.winner==='p1'?'You win!':'You lost.'}</div>`}
+async function fetchState(){
+  try{
+    let r=await fetch('/api/state'),d=await r.json();
+    curState=d.state;
+    rTeam(document.getElementById('t1box'),d.state.p1);
+    rTeam(document.getElementById('t2box'),d.state.p2);
+    rEval(d.analysis);rLog(d.log);
+    document.getElementById('ubtn').disabled=!d.canUndo;
 
-async function fetchState(){try{let r=await fetch('/api/state'),d=await r.json(),
-  a1=d.state.p1.find(m=>m.isActive)||d.state.p1[0],a2=d.state.p2.find(m=>m.isActive)||d.state.p2[0];
-  rActive(document.getElementById('p1a'),a1);rActive(document.getElementById('p2a'),a2);
-  rBench(document.getElementById('p1b'),d.state.p1);rBench(document.getElementById('p2b'),d.state.p2);
-  rEval(d.analysis);rMoves(d.analysis,d.state);rLog(d.history);rWinner(d.state);
-  if(d.analysis&&!d.analysis.running){clearInterval(poll);poll=setInterval(fetchState,3000)}}catch(e){console.error(e)}}
+    let fsEl=document.getElementById('force-switch');
+    let pickEl=document.getElementById('pick-area');
+    let goEl=document.getElementById('gobtn');
 
-async function play(a){clearInterval(poll);document.getElementById('ebest').textContent='Thinking...';
-  try{await fetch('/api/play',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a})});
-  poll=setInterval(fetchState,500);fetchState()}catch(e){console.error(e)}}
+    // Handle forced switches or normal turn
+    if(d.state.isTerminal){
+      pickEl.style.display='none';goEl.style.display='none';fsEl.innerHTML='';
+      let w=d.state.winner;
+      document.getElementById('winner').innerHTML=`<div class="winner-banner ${w}">${w==='p1'?'Player 1 wins!':'Player 2 wins!'}</div>`;
+    } else if(d.state.p1NeedsSwitch||d.state.p2NeedsSwitch){
+      pickEl.style.display='none';goEl.style.display='none';
+      document.getElementById('winner').innerHTML='';
+      let who=d.state.p1NeedsSwitch?'p1':'p2';
+      let acts=who==='p1'?d.p1Actions:d.p2Actions;
+      let switches=acts.filter(a=>a.type==='switch');
+      let h=`<div class="force-sw"><div class="fl">${who==='p1'?'P1':'P2'}'s Pokemon fainted! Choose a switch-in:</div>`;
+      switches.forEach(a=>{h+=`<button class="mbtn sw" onclick="forceSw('${who}',${a.id})" style="display:inline-block;width:auto;margin:4px">Switch→${a.species} (${a.hp}/${a.maxHp})</button>`});
+      h+='</div>';fsEl.innerHTML=h;
+    } else {
+      pickEl.style.display='grid';goEl.style.display='';fsEl.innerHTML='';
+      document.getElementById('winner').innerHTML='';
+      rMoves('p1moves',d.p1Actions,'p1',d.analysis);
+      rMoves('p2moves',d.p2Actions,'p2',d.analysis);
+      goEl.disabled=!(selP1&&selP2);
+    }
 
-async function resetGame(){clearInterval(poll);await fetch('/api/reset',{method:'POST'});poll=setInterval(fetchState,500);fetchState()}
+    if(d.analysis&&!d.analysis.running){clearInterval(poll);poll=setInterval(fetchState,3000)}
+  }catch(e){console.error(e)}
+}
+
+async function go(){
+  if(!selP1||!selP2)return;
+  clearInterval(poll);
+  document.getElementById('gobtn').disabled=true;
+  document.getElementById('ebest').textContent='Thinking...';
+  let p1=selP1,p2=selP2;selP1=null;selP2=null;
+  document.getElementById('p1sel').textContent='—';
+  document.getElementById('p2sel').textContent='—';
+  await fetch('/api/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p1,p2})});
+  poll=setInterval(fetchState,500);fetchState();
+}
+
+async function forceSw(player,idx){
+  clearInterval(poll);
+  await fetch('/api/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player,idx})});
+  poll=setInterval(fetchState,500);fetchState();
+}
+
+async function undo(){clearInterval(poll);selP1=null;selP2=null;await fetch('/api/undo',{method:'POST'});poll=setInterval(fetchState,500);fetchState()}
+async function reset(){clearInterval(poll);selP1=null;selP2=null;await fetch('/api/reset',{method:'POST'});poll=setInterval(fetchState,500);fetchState()}
 
 poll=setInterval(fetchState,500);fetchState();
 </script>

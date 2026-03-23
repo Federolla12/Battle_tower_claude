@@ -1,8 +1,6 @@
 """
 Gen 3 Battle Engine — Interactive Analysis Server
-===================================================
-Run: python server.py
-Then open http://localhost:5000 in your browser.
+Both sides controlled by the user (chess analysis style).
 """
 import sys, os, json, time, random, threading
 from flask import Flask, jsonify, request, send_from_directory
@@ -18,310 +16,210 @@ from dataclasses import replace
 app = Flask(__name__, static_folder="static")
 
 # ============================================================
-# Game state (global, protected by lock)
+# Global state
 # ============================================================
-
-game_lock = threading.Lock()
-game_state = None          # Current BattleState
-analysis_result = None     # Latest analysis output
-analysis_depth = 0         # Current depth being analyzed
-analysis_running = False   # Is the background thread working?
+lock = threading.Lock()
+game_state = None
+analysis_result = None
+analysis_depth = 0
+analysis_running = False
 analysis_thread = None
-move_history = []          # List of (turn, p1_action, p2_action, state_before)
+log_entries = []
+state_history = []   # for undo
 
 def build_teams():
-    skarmory = make_pokemon("Skarmory", "Impish",
-        {"hp": 252, "def": 232, "spe": 24}, {"spa": 30, "spd": 30},
-        ["Hidden Power", "Taunt", "Counter", "Toxic"], "Leftovers", "Keen Eye")
-    gengar = make_pokemon("Gengar", "Timid",
-        {"spa": 252, "spd": 4, "spe": 252}, {"atk": 0},
-        ["Giga Drain", "Psychic", "Ice Punch", "Fire Punch"], "Lum Berry", "Levitate")
-    snorlax = make_pokemon("Snorlax", "Careful",
-        {"hp": 252, "atk": 4, "spd": 252}, {},
-        ["Rest", "Sleep Talk", "Curse", "Body Slam"], "Chesto Berry", "Thick Fat")
-    aggron = make_pokemon("Aggron", "Impish",
-        {"hp": 248, "atk": 8, "def": 252}, {},
-        ["Rock Slide", "Substitute", "Focus Punch", "Thunder Wave"], "Leftovers", "Sturdy")
-    weezing = make_pokemon("Weezing", "Sassy",
-        {"hp": 252, "atk": 4, "spd": 252}, {},
-        ["Will-O-Wisp", "Fire Blast", "Sludge Bomb", "Pain Split"], "Lum Berry", "Levitate")
-    metagross = make_pokemon("Metagross", "Jolly",
-        {"atk": 252, "spd": 4, "spe": 252}, {},
-        ["Meteor Mash", "Earthquake", "Brick Break", "Explosion"], "Choice Band", "Clear Body")
-    return (
-        [skarmory, gengar, snorlax],
-        [aggron, weezing, metagross],
-    )
-
+    t1 = [
+        make_pokemon("Skarmory","Impish",{"hp":252,"def":232,"spe":24},{"spa":30,"spd":30},["Hidden Power","Taunt","Counter","Toxic"],"Leftovers","Keen Eye"),
+        make_pokemon("Gengar","Timid",{"spa":252,"spd":4,"spe":252},{"atk":0},["Giga Drain","Psychic","Ice Punch","Fire Punch"],"Lum Berry","Levitate"),
+        make_pokemon("Snorlax","Careful",{"hp":252,"atk":4,"spd":252},{},["Rest","Sleep Talk","Curse","Body Slam"],"Chesto Berry","Thick Fat"),
+    ]
+    t2 = [
+        make_pokemon("Aggron","Impish",{"hp":248,"atk":8,"def":252},{},["Rock Slide","Substitute","Focus Punch","Thunder Wave"],"Leftovers","Sturdy"),
+        make_pokemon("Weezing","Sassy",{"hp":252,"atk":4,"spd":252},{},["Will-O-Wisp","Fire Blast","Sludge Bomb","Pain Split"],"Lum Berry","Levitate"),
+        make_pokemon("Metagross","Jolly",{"atk":252,"spd":4,"spe":252},{},["Meteor Mash","Earthquake","Brick Break","Explosion"],"Choice Band","Clear Body"),
+    ]
+    return t1, t2
 
 def init_game():
-    global game_state, analysis_result, analysis_depth, move_history
+    global game_state, analysis_result, analysis_depth, log_entries, state_history
     t1, t2 = build_teams()
     game_state = make_battle(t1, t2)
     analysis_result = None
     analysis_depth = 0
-    move_history = []
-
+    log_entries = []
+    state_history = []
 
 # ============================================================
-# Background analysis (iterative deepening)
+# Background analysis
 # ============================================================
-
-def run_analysis_thread(state):
-    """Run iterative deepening analysis in background."""
+def run_analysis(state):
     global analysis_result, analysis_depth, analysis_running
-
     analysis_running = True
     try:
-        stages = [
-            (0, 300,  "Quick estimate"),
-            (1, 200,  "Depth 1"),
-            (2, 200,  "Depth 2"),
-            (2, 500,  "Depth 2 refined"),
-            (2, 1000, "Depth 2 high-confidence"),
-            (3, 100,  "Depth 3"),
-            (3, 200,  "Depth 3 refined"),
-        ]
-
-        for depth, mc, label in stages:
-            with game_lock:
+        stages = [(0,300),(1,200),(2,200),(2,500)]
+        for d, mc in stages:
+            with lock:
                 if game_state is not state:
-                    return  # State changed, abort
-
-            random.seed(int(time.time() * 1000))
-            engine = SearchEngine(max_depth=depth, mc_rollouts=mc)
-            result = engine.analyze(state)
-
-            with game_lock:
+                    return
+            random.seed(int(time.time()*1000) + d)
+            eng = SearchEngine(max_depth=d, mc_rollouts=mc)
+            r = eng.analyze(state)
+            with lock:
                 if game_state is state:
-                    analysis_result = result
-                    analysis_depth = depth
-
+                    analysis_result = r
+                    analysis_depth = d
     finally:
         analysis_running = False
 
-
 def start_analysis():
-    """Start background analysis for current state."""
     global analysis_thread, analysis_result, analysis_depth
     analysis_result = None
     analysis_depth = -1
-
-    state = game_state
-    analysis_thread = threading.Thread(target=run_analysis_thread,
-                                       args=(state,), daemon=True)
+    s = game_state
+    analysis_thread = threading.Thread(target=run_analysis, args=(s,), daemon=True)
     analysis_thread.start()
 
-
 # ============================================================
-# State serialization
+# Serialization
 # ============================================================
+def ser_mon(m, active=False):
+    return {"species":m.species,"hp":m.current_hp,"maxHp":m.max_hp,"status":m.status,
+            "statusTurns":m.status_turns,"types":list(m.types),"item":m.item,
+            "itemConsumed":m.item_consumed,"ability":m.ability,"moves":list(m.moves),
+            "moveLocked":m.move_locked,"atkStage":m.atk_stage,"defStage":m.def_stage,
+            "spaStage":m.spa_stage,"spdStage":m.spd_stage,"speStage":m.spe_stage,
+            "substituteHp":m.substitute_hp,"tauntTurns":m.taunt_turns,
+            "isActive":active,"alive":m.alive()}
 
-def serialize_pokemon(mon, is_active=False):
+def ser_state(s):
     return {
-        "species": mon.species,
-        "hp": mon.current_hp,
-        "maxHp": mon.max_hp,
-        "status": mon.status,
-        "statusTurns": mon.status_turns,
-        "types": list(mon.types),
-        "item": mon.item,
-        "itemConsumed": mon.item_consumed,
-        "ability": mon.ability,
-        "moves": list(mon.moves),
-        "moveLocked": mon.move_locked,
-        "atkStage": mon.atk_stage,
-        "defStage": mon.def_stage,
-        "spaStage": mon.spa_stage,
-        "spdStage": mon.spd_stage,
-        "speStage": mon.spe_stage,
-        "substituteHp": mon.substitute_hp,
-        "tauntTurns": mon.taunt_turns,
-        "isActive": is_active,
-        "alive": mon.alive(),
+        "turn": s.turn_number,
+        "p1": [ser_mon(m, i==s.active_p1) for i,m in enumerate(s.team_p1)],
+        "p2": [ser_mon(m, i==s.active_p2) for i,m in enumerate(s.team_p2)],
+        "weather": s.weather, "weatherTurns": s.weather_turns,
+        "isTerminal": s.is_terminal(), "winner": s.winner(),
+        "p1NeedsSwitch": not s.active("p1").alive() and any(m.alive() for i,m in enumerate(s.team_p1) if i!=s.active_p1),
+        "p2NeedsSwitch": not s.active("p2").alive() and any(m.alive() for i,m in enumerate(s.team_p2) if i!=s.active_p2),
     }
 
-
-def serialize_state(state):
-    p1_team = []
-    for i, mon in enumerate(state.team_p1):
-        p1_team.append(serialize_pokemon(mon, i == state.active_p1))
-    p2_team = []
-    for i, mon in enumerate(state.team_p2):
-        p2_team.append(serialize_pokemon(mon, i == state.active_p2))
-
-    return {
-        "turn": state.turn_number,
-        "p1": p1_team,
-        "p2": p2_team,
-        "weather": state.weather,
-        "weatherTurns": state.weather_turns,
-        "isTerminal": state.is_terminal(),
-        "winner": state.winner(),
-    }
-
-
-def serialize_analysis(result, state):
-    if result is None:
-        return None
-
-    actions_p1 = result["actions_p1"]
-    p1_data = result["p1_analysis"]
-
-    moves = []
-    for a in sorted(actions_p1,
-                     key=lambda a: p1_data[a]["guaranteed_win_pct"],
-                     reverse=True):
+def ser_actions(s, player):
+    acts = get_legal_actions(s, player)
+    out = []
+    for a in acts:
         if a[0] == "move":
-            name = a[1]
-            action_type = "move"
+            out.append({"type":"move","id":a[1],"label":a[1]})
         else:
-            team = state.team_p1
-            name = f"Switch→{team[a[1]].species}"
-            action_type = "switch"
+            team = s.team_p1 if player=="p1" else s.team_p2
+            out.append({"type":"switch","id":a[1],"label":f"Switch→{team[a[1]].species}",
+                         "species":team[a[1]].species,
+                         "hp":team[a[1]].current_hp,"maxHp":team[a[1]].max_hp})
+    return out
 
-        counter = p1_data[a]["best_opponent_response"]
-        if counter[0] == "move":
-            counter_name = counter[1]
-        else:
-            team2 = state.team_p2
-            counter_name = f"Switch→{team2[counter[1]].species}"
-
-        moves.append({
-            "action": list(a),
-            "name": name,
-            "type": action_type,
-            "winPct": round(p1_data[a]["guaranteed_win_pct"] * 100, 1),
-            "counter": counter_name,
-            "isBest": a == result["best_move_p1"],
-        })
-
-    return {
-        "moves": moves,
-        "positionValue": round(result["position_value"] * 100, 1),
-        "depth": analysis_depth,
-        "nodes": result["nodes_searched"],
-        "running": analysis_running,
-    }
-
+def ser_analysis(r, s):
+    if not r: return None
+    moves = []
+    for a in sorted(r["actions_p1"], key=lambda a: r["p1_analysis"][a]["guaranteed_win_pct"], reverse=True):
+        info = r["p1_analysis"][a]
+        name = a[1] if a[0]=="move" else f"Switch→{s.team_p1[a[1]].species}"
+        ctr = info["best_opponent_response"]
+        ctr_name = ctr[1] if ctr[0]=="move" else f"Switch→{s.team_p2[ctr[1]].species}"
+        moves.append({"name":name,"winPct":round(info["guaranteed_win_pct"]*100,1),
+                       "counter":ctr_name,"isBest":a==r["best_move_p1"]})
+    return {"moves":moves,"positionValue":round(r["position_value"]*100,1),
+            "depth":analysis_depth,"nodes":r["nodes_searched"],"running":analysis_running}
 
 # ============================================================
-# API endpoints
+# API
 # ============================================================
-
 @app.route("/")
 def index():
-    return send_from_directory("static", "index.html")
+    return send_from_directory("static","index.html")
 
 @app.route("/api/state")
 def get_state():
-    with game_lock:
+    with lock:
+        s = game_state
         return jsonify({
-            "state": serialize_state(game_state),
-            "analysis": serialize_analysis(analysis_result, game_state),
-            "history": [{"turn": h[0], "p1": h[1], "p2": h[2]} for h in move_history],
+            "state": ser_state(s),
+            "p1Actions": ser_actions(s,"p1"),
+            "p2Actions": ser_actions(s,"p2"),
+            "analysis": ser_analysis(analysis_result, s),
+            "log": log_entries,
+            "canUndo": len(state_history) > 0,
         })
 
-@app.route("/api/play", methods=["POST"])
-def play_move():
-    """Play a move for P1. Engine picks P2's best response."""
-    global game_state, move_history
+@app.route("/api/resolve", methods=["POST"])
+def resolve():
+    """Resolve a turn with both players' chosen actions."""
+    global game_state, log_entries, state_history
     data = request.json
-    action = tuple(data["action"])  # ["move", "Hidden Power"] or ["switch", 1]
-    if action[0] == "switch":
-        action = ("switch", int(action[1]))
+    a1 = tuple(data["p1"])  # e.g. ["move","Hidden Power"] or ["switch",1]
+    a2 = tuple(data["p2"])
+    if a1[0]=="switch": a1=("switch",int(a1[1]))
+    if a2[0]=="switch": a2=("switch",int(a2[1]))
 
-    with game_lock:
+    with lock:
         if game_state.is_terminal():
-            return jsonify({"error": "Game is over"}), 400
+            return jsonify({"error":"Game is over"}),400
 
-        # Handle forced switches (active mon fainted)
-        if not game_state.active("p1").alive():
-            if action[0] != "switch":
-                return jsonify({"error": "Must switch — active Pokemon fainted"}), 400
-            new_state = execute_switch(game_state, "p1", action[1])
-            move_history.append((game_state.turn_number, f"Switch→{game_state.team_p1[action[1]].species}", "—"))
-            game_state = new_state
-            start_analysis()
-            return jsonify({"ok": True})
+        state_history.append(game_state)
+        old = game_state
 
-        if not game_state.active("p2").alive():
-            # P2 auto-switches to best option
-            bench = game_state.alive_bench("p2")
-            if bench:
-                new_state = execute_switch(game_state, "p2", bench[0])
-                game_state = new_state
-            start_analysis()
-            return jsonify({"ok": True})
+        # Resolve
+        outcomes = resolve_turn(game_state, a1, a2)
+        # Pick most likely outcome
+        outcomes.sort(key=lambda x:-x[0])
+        game_state = outcomes[0][1]
 
-        # Get P2's best response to this specific P1 action
-        # Use the analysis result if available
-        p2_action = None
-        if analysis_result and action in analysis_result["p1_analysis"]:
-            p2_action = analysis_result["p1_analysis"][action]["best_opponent_response"]
-        else:
-            # Fallback: P2 picks first legal action
-            p2_actions = get_legal_actions(game_state, "p2")
-            p2_action = p2_actions[0]
-
-        # Resolve the turn (sample one outcome)
-        outcomes = resolve_turn(game_state, action, p2_action)
-        # Pick the most likely outcome for deterministic play
-        outcomes.sort(key=lambda x: -x[0])
-        new_state = outcomes[0][1]
-
-        # Format names for history
-        p1_name = action[1] if action[0] == "move" else f"Switch→{game_state.team_p1[action[1]].species}"
-        p2_name = p2_action[1] if p2_action[0] == "move" else f"Switch→{game_state.team_p2[p2_action[1]].species}"
-
-        move_history.append((game_state.turn_number, p1_name, p2_name))
-        game_state = new_state
-
-        # Handle post-turn forced switches
-        if not game_state.is_terminal():
-            if not game_state.active("p2").alive():
-                bench = game_state.alive_bench("p2")
-                if bench:
-                    # P2 auto-switches (engine picks best)
-                    engine = SearchEngine(max_depth=0, mc_rollouts=100)
-                    best_idx = bench[0]
-                    best_val = 2.0
-                    for idx in bench:
-                        s = execute_switch(game_state, "p2", idx)
-                        from gen3.c_rollout import c_rollout
-                        val = c_rollout(s, 100)
-                        if val < best_val:
-                            best_val = val
-                            best_idx = idx
-                    game_state = execute_switch(game_state, "p2", best_idx)
+        # Log
+        n1 = a1[1] if a1[0]=="move" else f"Switch→{old.team_p1[a1[1]].species}"
+        n2 = a2[1] if a2[0]=="move" else f"Switch→{old.team_p2[a2[1]].species}"
+        log_entries.append({"turn":old.turn_number,"p1":n1,"p2":n2})
 
         start_analysis()
-        return jsonify({"ok": True})
+    return jsonify({"ok":True})
 
+@app.route("/api/switch", methods=["POST"])
+def forced_switch():
+    """Handle a forced switch (after a KO)."""
+    global game_state, state_history
+    data = request.json
+    player = data["player"]  # "p1" or "p2"
+    idx = int(data["idx"])
 
-@app.route("/api/reset", methods=["POST"])
-def reset():
-    with game_lock:
-        init_game()
+    with lock:
+        state_history.append(game_state)
+        game_state = execute_switch(game_state, player, idx)
+        log_entries.append({"turn":game_state.turn_number,
+                            "p1": f"Switch→{game_state.active(player).species}" if player=="p1" else "—",
+                            "p2": f"Switch→{game_state.active(player).species}" if player=="p2" else "—"})
         start_analysis()
-    return jsonify({"ok": True})
-
+    return jsonify({"ok":True})
 
 @app.route("/api/undo", methods=["POST"])
 def undo():
-    """Undo not implemented yet — would need state history."""
-    return jsonify({"error": "Not implemented"}), 400
+    global game_state, log_entries, state_history
+    with lock:
+        if not state_history:
+            return jsonify({"error":"Nothing to undo"}),400
+        game_state = state_history.pop()
+        if log_entries:
+            log_entries.pop()
+        start_analysis()
+    return jsonify({"ok":True})
 
-
-# ============================================================
-# Main
-# ============================================================
+@app.route("/api/reset", methods=["POST"])
+def reset():
+    with lock:
+        init_game()
+        start_analysis()
+    return jsonify({"ok":True})
 
 if __name__ == "__main__":
     init_game()
     start_analysis()
-    print("=" * 50)
-    print("  Gen 3 Battle Engine — Interactive Analysis")
-    print("  Open http://localhost:5000 in your browser")
-    print("=" * 50)
+    print("="*50)
+    print("  Gen 3 Battle Engine")
+    print("  http://localhost:5000")
+    print("="*50)
     app.run(host="0.0.0.0", port=5000, debug=False)
