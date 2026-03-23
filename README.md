@@ -19,9 +19,23 @@ gcc -O3 -shared -fPIC -o gen3/rollout.so gen3/rollout.c -lm
 
 ## Usage
 
+### Command line analysis
 ```bash
 python main.py
 ```
+
+### Interactive mode (web UI)
+```bash
+pip install flask
+python server.py
+```
+Then open http://localhost:5000 in your browser. You'll see:
+- **Eval bar** — win probability updating in real-time as analysis deepens
+- **Team display** — HP bars, status conditions, stat changes, items
+- **Move analysis** — click any move to play it; engine picks the opponent's best counter
+- **Move history** — full log of each turn
+
+The analysis runs iterative deepening in the background: instant rough estimate → depth 1 → depth 2, with the UI updating at each stage.
 
 Output:
 ```
