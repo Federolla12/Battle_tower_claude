@@ -395,3 +395,112 @@ def test_safeguard_blocks_major_status_from_opponent():
 
     tox_outcomes = execute_player_action(safeguarded, "p2", ("move", "Toxic"))
     assert all(s.active("p1").status is None for _, s in tox_outcomes)
+
+
+# ============================================================
+# Bug fix: Endure guard `current_hp > 1` prevented survival at exactly 1 HP
+# ============================================================
+
+def test_endure_at_1hp_blocks_lethal_damage():
+    """Endure must work even when the user is already at exactly 1 HP.
+
+    The original code had `if defender.enduring and defender.current_hp > 1:`
+    which skipped the cap when HP==1, letting the mon faint.
+    """
+    protector = _mk_protector()
+    attacker = _mk_metagross_cband()
+    skarm = _mk_skarmory()
+    state = make_battle([protector, skarm, skarm], [attacker, skarm, skarm])
+
+    # Set defender to exactly 1 HP
+    p1 = state.active("p1")
+    state = state.set_active("p1", replace(p1, current_hp=1))
+
+    endure_outcomes = execute_player_action(state, "p1", ("move", "Endure"))
+    endure_state = next((s for _, s in endure_outcomes if s.active("p1").enduring), None)
+    assert endure_state is not None, "expected a successful Endure branch"
+
+    boom_outcomes = execute_player_action(endure_state, "p2", ("move", "Explosion"))
+    # Every outcome must leave the enduring mon at exactly 1 HP (alive)
+    assert all(
+        s.active("p1").current_hp == 1 for _, s in boom_outcomes
+    ), "Endure at 1 HP must survive any lethal hit"
+
+
+# ============================================================
+# Bug fix: Swagger applied confusion even under Safeguard
+# ============================================================
+
+def _mk_swagger_user():
+    return make_pokemon(
+        "Skarmory", "Impish",
+        {"hp": 252, "def": 232, "spe": 24}, {"spa": 30, "spd": 30},
+        ["Swagger", "Taunt", "Counter", "Toxic"],
+        None, "Keen Eye",
+    )
+
+
+def test_swagger_still_boosts_atk_under_safeguard():
+    """Swagger +2 Atk must apply on hit even when the target has Safeguard active."""
+    swagger_user = _mk_swagger_user()
+    protector = _mk_protector()
+    skarm = _mk_skarmory()
+    state = make_battle([swagger_user, skarm, skarm], [protector, skarm, skarm])
+
+    sg_outcomes = execute_player_action(state, "p2", ("move", "Safeguard"))
+    safeguarded = next((s for _, s in sg_outcomes if s.field_p2.safeguard_turns == 5), None)
+    assert safeguarded is not None
+
+    swag_outcomes = execute_player_action(safeguarded, "p1", ("move", "Swagger"))
+    # Filter to hit branches only (Swagger has 90% acc, miss branches have atk_stage=0)
+    hit_states = [s for _, s in swag_outcomes if s.active("p2").atk_stage > 0]
+    assert hit_states, "expected at least one hit branch for Swagger"
+    assert all(
+        s.active("p2").atk_stage == 2 for s in hit_states
+    ), "Swagger must still grant +2 Atk even under Safeguard"
+
+
+def test_swagger_confusion_blocked_by_safeguard():
+    """Safeguard must block the confusion from Swagger (but not the +2 Atk)."""
+    swagger_user = _mk_swagger_user()
+    protector = _mk_protector()
+    skarm = _mk_skarmory()
+    state = make_battle([swagger_user, skarm, skarm], [protector, skarm, skarm])
+
+    sg_outcomes = execute_player_action(state, "p2", ("move", "Safeguard"))
+    safeguarded = next((s for _, s in sg_outcomes if s.field_p2.safeguard_turns == 5), None)
+
+    swag_outcomes = execute_player_action(safeguarded, "p1", ("move", "Swagger"))
+    assert all(
+        not s.active("p2").confused for _, s in swag_outcomes
+    ), "Safeguard must block Swagger's confusion"
+
+
+# ============================================================
+# Bug fix: miss branches did not reset protect_consecutive
+# ============================================================
+
+def test_protect_consecutive_resets_on_miss():
+    """A missed move (not Protect/Endure) must reset the Protect streak counter.
+
+    If a player on a Protect streak fires a status move that misses, the
+    consecutive counter was previously preserved on the miss branch, giving the
+    next Protect the wrong (lower) success probability.
+    """
+    protector = _mk_protector()
+    toxic_user = _mk_toxic_user()
+    skarm = _mk_skarmory()
+    state = make_battle([protector, skarm, skarm], [toxic_user, skarm, skarm])
+
+    # Build a state where P2 has used Protect twice (protect_consecutive=2)
+    p2 = state.active("p2")
+    state = state.set_active("p2", replace(p2, protect_consecutive=2))
+
+    # Use a move with < 100 accuracy so there are miss branches.
+    # Toxic has 90% accuracy (or in some implementations uses 85%).
+    toxic_outcomes = execute_player_action(state, "p2", ("move", "Toxic"))
+
+    miss_states = [s for _, s in toxic_outcomes if s.active("p2").protect_consecutive > 0]
+    assert not miss_states, (
+        "A missed non-Protect move must reset protect_consecutive to 0 on all miss branches"
+    )

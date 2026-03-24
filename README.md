@@ -103,6 +103,10 @@ These are computed precisely from cartridge math. Win% is fully reliable when th
 | Natural Cure | Cures status on switch-out |
 | Switch mechanics | Volatiles cleared, choice lock reset, entry hazards applied |
 | Speed ties | 50/50 branch in tree; both orderings evaluated |
+| Protect / Detect | Full consecutive-success model (100%, 50%, 25%, …); blocks all targeted moves |
+| Endure | Caps incoming damage at `current_hp − 1`; works even at 1 HP |
+| Safeguard | 5-turn field effect; blocks all major status infliction including Swagger's confusion |
+| Leech Seed | 1/8 max HP drained per turn; heals opposing active; blocked by Protect and Substitute |
 
 ### Tier 2 — Approximate
 
@@ -129,15 +133,12 @@ These mechanics are recognised (won't crash) but have no effect in simulation. P
 
 | Move / Mechanic | Status |
 |---|---|
-| Protect / Endure | No-op; always fails silently |
 | Attract | No-op; infatuation not tracked |
-| Leech Seed | No-op; drain not applied |
 | Baton Pass | No-op; staged stats not passed |
 | Encore / Disable / Torment | No-op; move restriction not enforced |
 | Perish Song | No-op; 3-turn KO not applied |
 | Trick / Skill Swap | No-op; items/abilities not swapped |
 | Reflect / Light Screen | Field state tracked, screens decrement, but **damage reduction not applied** |
-| Safeguard | No-op |
 | Substitute damage absorption | Exact — but moves that "fail vs Sub" (e.g. status) are blocked correctly |
 | Confusion (via Swagger / Confuse Ray) | Duration and self-hit chance modelled; but the Swagger +2 Atk boost to the target is applied exactly |
 | PP tracking | Not tracked; moves never run out |
@@ -154,6 +155,7 @@ These mechanics are recognised (won't crash) but have no effect in simulation. P
 ### Known Gen 3 rules not yet modelled
 
 - **Speed ties**: P1 wins deterministically in fast rollouts (C extension) — only the exact tree branches 50/50
+- **Protect / Endure / Safeguard in C rollout**: these mechanics are exact in the Python tree search but remain stubs in the C Monte Carlo rollout (leaf-node evaluation)
 - **OHKO moves**: 30% accuracy implemented; Sturdy blocks correctly
 - **Ghost-type Curse**: not implemented (treated as no-op)
 

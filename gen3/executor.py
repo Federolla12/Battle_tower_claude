@@ -118,9 +118,11 @@ def apply_damage_rolls(state: BattleState, player: str,
     if defender.substitute_hp > 0 and move.base_power > 0:
         return _apply_damage_to_sub(state, player, target_player, rolls, move)
 
-    # Endure: survive lethal hit at 1 HP.
-    if defender.enduring and defender.current_hp > 1:
-        rolls = [min(r, defender.current_hp - 1) for r in rolls]
+    # Endure: cap damage so HP never drops below 1, even when already at 1 HP.
+    # (min(r, max_hp - 1) = min(r, 0) = 0 when current_hp == 1, meaning any
+    # lethal hit deals 0 net damage — the Gen 3 correct outcome.)
+    if defender.enduring:
+        rolls = [min(r, max(0, defender.current_hp - 1)) for r in rolls]
 
     # KO-threshold branching
     defender_hp = defender.current_hp
@@ -920,9 +922,13 @@ def execute_status_move(state: BattleState, player: str,
     elif eff == "swagger":
         if target.substitute_hp > 0:
             return [(1.0, state)]
+        # +2 Atk is always applied (not blocked by Safeguard).
         new_atk = min(6, target.atk_stage + 2)
         new_t_atk = replace(target, atk_stage=new_atk)
         s = state.set_active(target_player, new_t_atk)
+        # Confusion is blocked by Safeguard (Gen 3).
+        if _safeguard_active(state, target_player):
+            return [(1.0, s)]
         if s.active(target_player).confused:
             return [(1.0, s)]
         results = []
@@ -1012,7 +1018,6 @@ def execute_status_move(state: BattleState, player: str,
 
     # --- Stubs (no-op — complex mechanics not fully modelled) ---
     # attract, baton_pass,
-    # safeguard, attract, protect, endure, baton_pass,
     # destiny_bond, skill_swap, trick, memento, encore, disable, perish_song,
     # trap, follow_me, metronome, role_play, recycle, grudge, spite, torment,
     # imprison, evasion_plus1, acc_minus1
@@ -1067,8 +1072,15 @@ def execute_single_move(state: BattleState, player: str,
         # Accuracy check for status moves with < 100 accuracy
         if move.accuracy > 0 and move.accuracy < 100:
             hit_prob = move.accuracy / 100
-            # Pure misses do not count as move-use for Choice Band lock.
-            miss_results = [(1 - hit_prob, state)]
+            # Pure misses do not count as move-use for Choice Band lock,
+            # but they DO break any consecutive Protect streak (the user chose
+            # a different move this turn, even if it missed).
+            if attacker.protect_consecutive > 0:
+                miss_state = state.set_active(
+                    player, replace(attacker, protect_consecutive=0))
+            else:
+                miss_state = state
+            miss_results = [(1 - hit_prob, miss_state)]
             hit_states = execute_status_move(state_with_last_move, player, move)
             return miss_results + [(hit_prob * p, s) for p, s in hit_states]
         return execute_status_move(state_with_last_move, player, move)
@@ -1091,8 +1103,14 @@ def execute_single_move(state: BattleState, player: str,
     results = []
     if hit_prob < 1.0:
         # Pure misses should not mark the move as used for downstream
-        # Choice Band lock handling.
-        results.append((1 - hit_prob, state))
+        # Choice Band lock handling, but they DO break any consecutive Protect
+        # streak (the user chose a different move this turn, even if it missed).
+        if attacker.protect_consecutive > 0:
+            miss_state = state.set_active(
+                player, replace(attacker, protect_consecutive=0))
+        else:
+            miss_state = state
+        results.append((1 - hit_prob, miss_state))
 
     # Crit branching: only branch when crit changes outcome
     for is_crit, crit_prob in [(False, 1 - CRIT_RATE), (True, CRIT_RATE)]:

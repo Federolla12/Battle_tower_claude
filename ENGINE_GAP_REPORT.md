@@ -106,8 +106,8 @@ heals a flat **30 HP**.
 | Reflect/Light Screen | no damage reduction | no damage reduction | Medium (consistent) |
 | Sleep Talk | uniform random pick (not Gen 3 "can't repeat" rule) | not implemented (picks attack moves) | Low |
 | Confusion self-hit | flat 50%, duration modelled | not tracked at all | Medium |
-| Leech Seed drain | no-op in Python | no-op in C | Low (consistent) |
-| Protect / Endure | no-op in Python | no-op in C | Low (consistent) |
+| Leech Seed drain | **exact in Python** (1/8 drain + opponent heal, EOT) | no-op in C | Medium |
+| Protect / Endure / Safeguard | **exact in Python** (full consecutive model, Safeguard blocks status/confusion) | stubs in C | Medium |
 | Speed Boost | no-op in Python | no-op in C | Low (consistent) |
 | Flash Fire | no-op in Python | no-op in C | Low (consistent) |
 | Compound Eyes | no-op in Python | no-op in C | Low (consistent) |
@@ -126,7 +126,55 @@ heals a flat **30 HP**.
 
 ---
 
+## Bugs Fixed in Follow-Up Audit (Python executor)
+
+### 8. Endure guard prevented survival at exactly 1 HP (Medium — Fixed)
+
+**File**: `gen3/executor.py` → `apply_damage_rolls`
+
+`if defender.enduring and defender.current_hp > 1:` skipped the damage cap
+when the defender was already at 1 HP, causing the mon to faint despite having
+Endure active.
+
+**Fix**: removed the `> 1` guard. `min(r, current_hp - 1)` = `min(r, 0)` = 0
+when `current_hp == 1`, correctly dealing 0 net damage while keeping the mon alive.
+
+---
+
+### 9. Swagger applied confusion even under Safeguard (Medium — Fixed)
+
+**File**: `gen3/executor.py` → `execute_status_move`, `swagger` handler
+
+The swagger handler had no Safeguard check.  In Gen 3, Safeguard blocks the
+confusion component of Swagger but NOT the +2 Atk boost.
+
+**Fix**: added `if _safeguard_active(state, target_player): return [(1.0, s)]`
+AFTER applying the +2 Atk to `s` but BEFORE the confusion duration branching.
+
+---
+
+### 10. Miss branches preserved `protect_consecutive` (Low — Fixed)
+
+**File**: `gen3/executor.py` → `execute_single_move`
+
+When a status or damaging move missed, the original `state` was returned on
+the miss branch.  If the attacker had a Protect streak (`protect_consecutive > 0`),
+the stale counter carried over, giving the next Protect use a lower success
+probability than the rules allow (using a different move — even on a miss —
+should reset the streak to 0).
+
+**Fix**: on miss branches, create a `miss_state` with `protect_consecutive=0`
+when the current value is non-zero; otherwise reuse the original state object
+(no extra allocation in the common case).
+
+---
+
 ## Test Coverage Added
 
-- `tests/test_mechanics.py` — 9 regression tests for hail immunity, Choice Specs lock, Sitrus Berry (flat 30 HP)
-- `tests/test_trust.py` — 25 behavioural contract tests covering speed ties, double-KO, Taunt/Sub interaction, Choice lock (all skip conditions), Roar+Spikes, sleep duration range, hail/sand immunities, symmetry, and calibration
+- `tests/test_mechanics.py` — 16 regression tests covering hail immunity, Choice Specs lock,
+  Sitrus Berry (flat 30 HP), Reflect/Light Screen, Leech Seed, Protect, Endure (including
+  1 HP edge case), Safeguard (Toxic block, Swagger confusion block, Swagger Atk boost preserved),
+  and Protect consecutive counter reset on miss
+- `tests/test_trust.py` — 25 behavioural contract tests covering speed ties, double-KO,
+  Taunt/Sub interaction, Choice lock (all skip conditions), Roar+Spikes, sleep duration range,
+  hail/sand immunities, symmetry, and calibration
