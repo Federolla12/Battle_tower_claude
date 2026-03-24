@@ -27,6 +27,11 @@ PARA_SKIP = 0.25
 FREEZE_THAW = 0.20
 
 
+def _safeguard_active(state: BattleState, player: str) -> bool:
+    field = state.field_p1 if player == "p1" else state.field_p2
+    return field.safeguard_turns > 0
+
+
 # ============================================================
 # Convert state Pokemon → damage calc inputs
 # ============================================================
@@ -105,9 +110,17 @@ def apply_damage_rolls(state: BattleState, player: str,
         new_def = replace(defender, current_hp=new_hp)
         return [(1.0, state.set_active(target_player, new_def))]
 
+    # Protect/Detect block incoming targeted damage moves.
+    if defender.protected:
+        return [(1.0, state)]
+
     # Does the defender have a Substitute?
     if defender.substitute_hp > 0 and move.base_power > 0:
         return _apply_damage_to_sub(state, player, target_player, rolls, move)
+
+    # Endure: survive lethal hit at 1 HP.
+    if defender.enduring and defender.current_hp > 1:
+        rolls = [min(r, defender.current_hp - 1) for r in rolls]
 
     # KO-threshold branching
     defender_hp = defender.current_hp
@@ -264,6 +277,8 @@ def apply_secondary_effect(state: BattleState, player: str,
     eff = move.effect
 
     if eff == "burn":
+        if _safeguard_active(state, target_player):
+            return [(1.0, state)]
         if target.status is not None or "Fire" in (target.types[0], target.types[1]):
             return [(1.0, state)]
         new_t = replace(target, status="burn")
@@ -272,6 +287,8 @@ def apply_secondary_effect(state: BattleState, player: str,
         return [(chance, s_eff), (1 - chance, state)]
 
     elif eff == "paralyze":
+        if _safeguard_active(state, target_player):
+            return [(1.0, state)]
         if target.status is not None:
             return [(1.0, state)]
         # Body Slam can't paralyze Normal types in Gen 3? Actually it can.
@@ -281,6 +298,8 @@ def apply_secondary_effect(state: BattleState, player: str,
         return [(chance, s_eff), (1 - chance, state)]
 
     elif eff == "freeze":
+        if _safeguard_active(state, target_player):
+            return [(1.0, state)]
         if target.status is not None or "Ice" in (target.types[0], target.types[1]):
             return [(1.0, state)]
         new_t = replace(target, status="freeze")
@@ -289,6 +308,8 @@ def apply_secondary_effect(state: BattleState, player: str,
         return [(chance, s_eff), (1 - chance, state)]
 
     elif eff == "poison":
+        if _safeguard_active(state, target_player):
+            return [(1.0, state)]
         if target.status is not None:
             return [(1.0, state)]
         if "Poison" in (target.types[0], target.types[1]):
@@ -346,6 +367,8 @@ def apply_secondary_effect(state: BattleState, player: str,
 
     elif eff == "confuse":
         # Secondary confusion (Dragon Breath 30%, Dynamic Punch 100%, etc.)
+        if _safeguard_active(state, target_player):
+            return [(1.0, state)]
         if target.confused:
             return [(1.0, state)]
         # Branch on random duration 2-5 turns
@@ -425,6 +448,19 @@ def execute_status_move(state: BattleState, player: str,
     target = state.active(target_player)
     eff = move.effect
 
+    self_targeting = {
+        "substitute", "rest", "sleep_talk", "curse_normal",
+        "atk_plus2_self", "atk_spe_plus1_self", "spa_spd_plus1_self",
+        "spe_plus2_self", "spd_plus2_self", "recover_half",
+        "atk_def_plus1_self", "def_spd_plus1_self", "def_plus2_self",
+        "belly_drum", "spa_plus3_self", "atk_plus1_self_status",
+        "rain_dance", "sunny_day", "hail", "sandstorm_move",
+        "reflect", "light_screen", "safeguard", "protect", "endure",
+        "haze", "psych_up",
+    }
+    if target.protected and eff not in self_targeting:
+        return [(1.0, state)]
+
     if eff == "taunt":
         # Gen 3: Taunt is not blocked by Substitute
         new_t = replace(target, taunt_turns=3)
@@ -433,6 +469,8 @@ def execute_status_move(state: BattleState, player: str,
     elif eff == "toxic":
         # Accuracy check handled by caller
         if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if _safeguard_active(state, target_player):
             return [(1.0, state)]
         if target.status is not None:
             return [(1.0, state)]
@@ -449,6 +487,8 @@ def execute_status_move(state: BattleState, player: str,
         # Thunder Wave
         if target.substitute_hp > 0:
             return [(1.0, state)]
+        if _safeguard_active(state, target_player):
+            return [(1.0, state)]
         if target.status is not None:
             return [(1.0, state)]
         # Ground types immune to Thunder Wave
@@ -462,6 +502,8 @@ def execute_status_move(state: BattleState, player: str,
     elif eff == "burn_status":
         # Will-O-Wisp
         if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if _safeguard_active(state, target_player):
             return [(1.0, state)]
         if target.status is not None:
             return [(1.0, state)]
@@ -608,6 +650,8 @@ def execute_status_move(state: BattleState, player: str,
         # Battle Tower rules: no Sleep Clause
         if target.substitute_hp > 0:
             return [(1.0, state)]
+        if _safeguard_active(state, target_player):
+            return [(1.0, state)]
         if target.status is not None:
             return [(1.0, state)]
         # Random duration 1-4 turns (equal probability)
@@ -624,6 +668,8 @@ def execute_status_move(state: BattleState, player: str,
     elif eff == "confuse_status":
         # Confuse Ray (never misses when it hits — accuracy handled by caller)
         if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if _safeguard_active(state, target_player):
             return [(1.0, state)]
         if target.confused:
             return [(1.0, state)]
@@ -756,6 +802,33 @@ def execute_status_move(state: BattleState, player: str,
             return [(1.0, state)]
         new_field = replace(field, light_screen_turns=5)
         return [(1.0, state.set_field(player, new_field))]
+
+    elif eff == "safeguard":
+        field = state.field_p1 if player == "p1" else state.field_p2
+        if field.safeguard_turns > 0:
+            return [(1.0, state)]
+        new_field = replace(field, safeguard_turns=5)
+        return [(1.0, state.set_field(player, new_field))]
+
+    elif eff in ("protect", "endure"):
+        # Gen 3 consecutive success chance: 1, 1/2, 1/4, ...
+        success = 1.0 / (2 ** attacker.protect_consecutive)
+        success = min(1.0, success)
+        success_mon = replace(
+            attacker,
+            protect_consecutive=attacker.protect_consecutive + 1,
+            protected=(eff == "protect"),
+            enduring=(eff == "endure"),
+        )
+        fail_mon = replace(
+            attacker,
+            protect_consecutive=0,
+            protected=False,
+            enduring=False,
+        )
+        s_ok = state.set_active(player, success_mon)
+        s_fail = state.set_active(player, fail_mon)
+        return [(success, s_ok), (1 - success, s_fail)]
 
     # --- Opponent stat drops ---
 
@@ -938,6 +1011,7 @@ def execute_status_move(state: BattleState, player: str,
         return [(1.0, state.set_active(target_player, replace(target, leech_seeded=True)))]
 
     # --- Stubs (no-op — complex mechanics not fully modelled) ---
+    # attract, baton_pass,
     # safeguard, attract, protect, endure, baton_pass,
     # destiny_bond, skill_swap, trick, memento, encore, disable, perish_song,
     # trap, follow_me, metronome, role_play, recycle, grudge, spite, torment,
@@ -974,9 +1048,18 @@ def execute_single_move(state: BattleState, player: str,
     #
     # Instead, we create a separate state_with_last_move and only use it on
     # branches where the move actually counts as being used.
+    next_consecutive = attacker.protect_consecutive
+    if move.effect not in ("protect", "endure"):
+        next_consecutive = 0
     state_with_last_move = state.set_active(
         player,
-        replace(attacker, last_move=move.name)
+        replace(
+            attacker,
+            last_move=move.name,
+            protect_consecutive=next_consecutive,
+            protected=False,
+            enduring=False,
+        )
     )
 
     # --- Status move ---
@@ -1132,11 +1215,13 @@ def apply_end_of_turn(state: BattleState) -> BattleState:
             new_mon = replace(mon, current_hp=hp, status_turns=st_turns,
                               item_consumed=consumed, taunt_turns=taunt,
                               flinched=False, last_damage_taken=0,
-                              last_damage_physical=False)
+                              last_damage_physical=False,
+                              protected=False, enduring=False)
             state = state.set_active(player, new_mon)
-        elif mon.flinched or mon.last_damage_taken > 0:
+        elif mon.flinched or mon.last_damage_taken > 0 or mon.protected or mon.enduring:
             new_mon = replace(mon, flinched=False, last_damage_taken=0,
-                              last_damage_physical=False)
+                              last_damage_physical=False,
+                              protected=False, enduring=False)
             state = state.set_active(player, new_mon)
 
     # Pinch berries (trigger at ≤25% HP, single use)
@@ -1171,9 +1256,14 @@ def apply_end_of_turn(state: BattleState) -> BattleState:
         field = state.field_p1 if player == "p1" else state.field_p2
         new_r = max(0, field.reflect_turns - 1)
         new_ls = max(0, field.light_screen_turns - 1)
-        if new_r != field.reflect_turns or new_ls != field.light_screen_turns:
+        new_sg = max(0, field.safeguard_turns - 1)
+        if (new_r != field.reflect_turns
+                or new_ls != field.light_screen_turns
+                or new_sg != field.safeguard_turns):
             state = state.set_field(player,
-                replace(field, reflect_turns=new_r, light_screen_turns=new_ls))
+                replace(field, reflect_turns=new_r,
+                        light_screen_turns=new_ls,
+                        safeguard_turns=new_sg))
 
     # Weather countdown
     if state.weather and state.weather_turns > 0:

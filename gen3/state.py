@@ -52,6 +52,8 @@ class Pokemon:
     last_damage_physical: bool     # was last hit physical?
     protect_consecutive: int       # consecutive Protect uses
     leech_seeded: bool             # seeded by opponent (clears on switch)
+    protected: bool                # Protect/Detect succeeded this turn
+    enduring: bool                 # Endure succeeded this turn
 
     def alive(self) -> bool:
         return self.current_hp > 0
@@ -87,6 +89,7 @@ class FieldSide:
     spikes: int                    # 0-3 layers
     reflect_turns: int             # 0 = inactive
     light_screen_turns: int        # 0 = inactive
+    safeguard_turns: int           # 0 = inactive
 
 
 @dataclass(frozen=True)
@@ -197,10 +200,12 @@ def make_pokemon(species: str, nature: str, evs: dict,
         last_damage_taken=0, last_damage_physical=False,
         protect_consecutive=0,
         leech_seeded=False,
+        protected=False,
+        enduring=False,
     )
 
 
-EMPTY_FIELD = FieldSide(spikes=0, reflect_turns=0, light_screen_turns=0)
+EMPTY_FIELD = FieldSide(spikes=0, reflect_turns=0, light_screen_turns=0, safeguard_turns=0)
 
 
 def make_battle(team1: list[Pokemon], team2: list[Pokemon]) -> BattleState:

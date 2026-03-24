@@ -90,6 +90,24 @@ def _mk_seeder():
     )
 
 
+def _mk_protector():
+    return make_pokemon(
+        "Skarmory", "Impish",
+        {"hp": 252, "def": 232, "spe": 24}, {"spa": 30, "spd": 30},
+        ["Protect", "Endure", "Reflect", "Safeguard"],
+        None, "Keen Eye",
+    )
+
+
+def _mk_toxic_user():
+    return make_pokemon(
+        "Skarmory", "Impish",
+        {"hp": 252, "def": 232, "spe": 24}, {"spa": 30, "spd": 30},
+        ["Toxic", "Hidden Power", "Taunt", "Counter"],
+        None, "Keen Eye",
+    )
+
+
 # ============================================================
 # Bug fix: hail damage missing from Python apply_end_of_turn
 # ============================================================
@@ -326,3 +344,54 @@ def test_leech_seed_drains_seeded_target_and_heals_opponent():
     expected = max(1, seeded_state.active("p2").max_hp // 8)
     assert p2_before - p2_after == expected
     assert p1_after - p1_before == expected
+
+
+def test_protect_blocks_incoming_damage_move():
+    """Successful Protect should block incoming damaging moves that turn."""
+    protector = _mk_protector()
+    attacker = _mk_aggron()
+    skarm = _mk_skarmory()
+    state = make_battle([protector, skarm, skarm], [attacker, skarm, skarm])
+
+    protect_outcomes = execute_player_action(state, "p1", ("move", "Protect"))
+    protected_state = next((s for _, s in protect_outcomes if s.active("p1").protected), None)
+    assert protected_state is not None, "expected a successful Protect branch"
+
+    hp_before = protected_state.active("p1").current_hp
+    hit_outcomes = execute_player_action(protected_state, "p2", ("move", "Earthquake"))
+    assert all(s.active("p1").current_hp == hp_before for _, s in hit_outcomes)
+
+
+def test_endure_prevents_ko_and_leaves_user_at_1hp():
+    """Successful Endure should keep the user alive at 1 HP against lethal damage."""
+    protector = _mk_protector()
+    attacker = _mk_metagross_cband()
+    skarm = _mk_skarmory()
+    state = make_battle([protector, skarm, skarm], [attacker, skarm, skarm])
+
+    # Put defender into guaranteed-lethal range for Explosion.
+    p1 = state.active("p1")
+    state = state.set_active("p1", replace(p1, current_hp=10))
+
+    endure_outcomes = execute_player_action(state, "p1", ("move", "Endure"))
+    endure_state = next((s for _, s in endure_outcomes if s.active("p1").enduring), None)
+    assert endure_state is not None, "expected a successful Endure branch"
+
+    boom_outcomes = execute_player_action(endure_state, "p2", ("move", "Explosion"))
+    assert any(s.active("p1").current_hp == 1 for _, s in boom_outcomes)
+    assert all(s.active("p1").current_hp >= 1 for _, s in boom_outcomes)
+
+
+def test_safeguard_blocks_major_status_from_opponent():
+    """Safeguard should block opponent-inflicted major status (e.g. Toxic)."""
+    protector = _mk_protector()
+    toxic_user = _mk_toxic_user()
+    skarm = _mk_skarmory()
+    state = make_battle([protector, skarm, skarm], [toxic_user, skarm, skarm])
+
+    sg_outcomes = execute_player_action(state, "p1", ("move", "Safeguard"))
+    safeguarded = next((s for _, s in sg_outcomes if s.field_p1.safeguard_turns == 5), None)
+    assert safeguarded is not None, "expected Safeguard to apply"
+
+    tox_outcomes = execute_player_action(safeguarded, "p2", ("move", "Toxic"))
+    assert all(s.active("p1").status is None for _, s in tox_outcomes)
