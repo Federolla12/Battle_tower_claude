@@ -399,6 +399,10 @@ _m("DynamicPunch",  "Fighting",100, 50, 5,  contact=True, effect="confuse", eff_
 _m("Headbutt",      "Normal",  70, 100, 15, contact=True, effect="flinch", eff_chance=30)
 
 
+# Struggle — used when no PP left (recoil = 25% of damage dealt)
+_m("Struggle", "Normal", 50, 0, 1, contact=True, recoil=0.25)
+
+
 def get_move(name: str) -> MoveDef:
     """Look up a move by name. Raises KeyError if not found."""
     return MOVE_DB[name]

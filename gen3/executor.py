@@ -418,7 +418,7 @@ def execute_status_move(state: BattleState, player: str,
     if eff == "taunt":
         if target.substitute_hp > 0:
             return [(1.0, state)]  # Gen 3: Taunt blocked by Sub? No actually it goes through.
-        new_t = replace(target, taunt_turns=2)
+        new_t = replace(target, taunt_turns=3)
         return [(1.0, state.set_active(target_player, new_t))]
 
     elif eff == "toxic":
