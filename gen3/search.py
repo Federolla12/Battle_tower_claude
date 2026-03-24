@@ -176,7 +176,7 @@ class SearchEngine:
         for a1 in actions_p1:
             for a2 in actions_p2:
                 outcomes = resolve_turn(state, a1, a2)
-                ev = sum(prob * self.search(s, 1)
+                ev = sum(prob * self.search(s, 0)
                          for prob, s in outcomes)
                 matrix[(a1, a2)] = ev
 

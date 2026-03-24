@@ -87,7 +87,10 @@ def run_analysis(state):
     global analysis_result, analysis_depth, analysis_running, analysis_error, analysis_current_depth
     analysis_running = True
     try:
-        stages = [(0,300),(1,200),(2,200),(2,500)]
+        # depth 0: pure MC, instant baseline
+        # depth 1: 1-ply lookahead (~1-5s depending on branching)
+        # depth 2: 2-ply lookahead (~15-20s background; noisy but directionally correct)
+        stages = [(0,300),(1,100),(1,300),(2,20)]
         for d, mc in stages:
             with lock:
                 if game_state is not state:
