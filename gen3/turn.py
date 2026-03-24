@@ -384,8 +384,11 @@ def execute_player_action(state: BattleState, player: str,
             # Execute the move
             move_results = execute_single_move(s_conf, player, move)
             for p_move, s_move in move_results:
-                # Choice Band: lock only when move actually fires
-                s_move = _apply_choice_lock(s_move, player, action)
+                # Choice Band lock rule:
+                # only lock when this branch actually recorded the move as used.
+                # Pure miss branches keep last_move unchanged (see executor.py).
+                if s_move.active(player).last_move == move.name:
+                    s_move = _apply_choice_lock(s_move, player, action)
                 results.append((p_status * p_conf * p_move, s_move))
 
     return results
@@ -659,9 +662,14 @@ def _sim_player_action(state: BattleState, player: str,
     for prob, s in results:
         cumulative += prob
         if r <= cumulative:
-            # Choice Band: lock only when move actually fires
-            return _apply_choice_lock(s, player, action), True
-    return _apply_choice_lock(results[-1][1], player, action), True
+            # Lock only on sampled branches that actually recorded the move.
+            if s.active(player).last_move == move.name:
+                s = _apply_choice_lock(s, player, action)
+            return s, True
+    s = results[-1][1]
+    if s.active(player).last_move == move.name:
+        s = _apply_choice_lock(s, player, action)
+    return s, True
 
 
 # ============================================================

@@ -52,10 +52,11 @@ Switch→Gengar           22.2%  (Rock Slide)
 
 ## Architecture
 
-- **Exact probability search** (depth 2) with simultaneous move resolution
+- **Probability-tree search** (depth 2) with simultaneous move resolution
+- **Exact damage arithmetic** — all 16 rolls computed per the Gen 3 formula, verified against Smogon's ADV calc
+- **KO-threshold branching** — roll sets that produce a KO vs. those that don't are kept as separate branches; survive rolls are split at the median into a low-damage and a high-damage bracket
 - **C rollout simulator** (~175,000 games/sec) for leaf node evaluation
 - **Maximin strategy** — finds the move with the best guaranteed win rate
-- **Gen 3 damage formula** verified roll-by-roll against Smogon's ADV calc
 
 ### Modules
 

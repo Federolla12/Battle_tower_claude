@@ -130,16 +130,23 @@ def apply_damage_rolls(state: BattleState, player: str,
         results.append((p_ko, s))
 
     if survive_rolls:
-        p_surv = len(survive_rolls) / 16
-        avg_dmg = round(sum(survive_rolls) / len(survive_rolls))
-        new_hp = max(1, defender_hp - avg_dmg)
-        new_defender = replace(defender, current_hp=new_hp)
-        s = state.set_active(target_player, new_defender)
-        s = _track_damage(s, target_player, avg_dmg, move)
-        s = _apply_recoil_drain(s, player, avg_dmg, move)
-        if move.is_explosion:
-            s = _faint_attacker(s, player)
-        results.append((p_surv, s))
+        # Split survive rolls at the median so the search tree sees both a
+        # low-damage and a high-damage HP bracket, not just a single average.
+        # Each group keeps its own average; _merge_outcomes collapses them if
+        # the rounded damage happens to be the same.
+        mid = len(survive_rolls) // 2
+        groups = [survive_rolls[:mid], survive_rolls[mid:]] if mid else [survive_rolls]
+        for grp in groups:
+            p_grp = len(grp) / 16
+            avg_dmg = round(sum(grp) / len(grp))
+            new_hp = max(1, defender_hp - avg_dmg)
+            new_defender = replace(defender, current_hp=new_hp)
+            s = state.set_active(target_player, new_defender)
+            s = _track_damage(s, target_player, avg_dmg, move)
+            s = _apply_recoil_drain(s, player, avg_dmg, move)
+            if move.is_explosion:
+                s = _faint_attacker(s, player)
+            results.append((p_grp, s))
 
     return results
 
@@ -163,15 +170,18 @@ def _apply_damage_to_sub(state, player, target_player, rolls, move):
         results.append((p, s))
 
     if survives:
-        p = len(survives) / 16
-        avg_dmg = round(sum(survives) / len(survives))
-        new_sub = max(0, sub_hp - avg_dmg)
-        new_def = replace(defender, substitute_hp=new_sub,
-                          last_damage_taken=0, last_damage_physical=False)
-        s = state.set_active(target_player, new_def)
-        if move.is_explosion:
-            s = _faint_attacker(s, player)
-        results.append((p, s))
+        mid = len(survives) // 2
+        groups = [survives[:mid], survives[mid:]] if mid else [survives]
+        for grp in groups:
+            p = len(grp) / 16
+            avg_dmg = round(sum(grp) / len(grp))
+            new_sub = max(0, sub_hp - avg_dmg)
+            new_def = replace(defender, substitute_hp=new_sub,
+                              last_damage_taken=0, last_damage_physical=False)
+            s = state.set_active(target_player, new_def)
+            if move.is_explosion:
+                s = _faint_attacker(s, player)
+            results.append((p, s))
 
     return results
 
@@ -930,23 +940,32 @@ def execute_single_move(state: BattleState, player: str,
     attacker = state.active(player)
     target = state.active(target_player)
 
-    # Update last_move
-    new_atk = replace(attacker, last_move=move.name)
-    state = state.set_active(player, new_atk)
+    # NOTE: We intentionally do NOT set last_move before the accuracy branch.
+    # Doing so makes pure miss outcomes indistinguishable from successful
+    # move-use outcomes in the turn layer, which in turn can cause
+    # Choice Band to lock on misses.
+    #
+    # Instead, we create a separate state_with_last_move and only use it on
+    # branches where the move actually counts as being used.
+    state_with_last_move = state.set_active(
+        player,
+        replace(attacker, last_move=move.name)
+    )
 
     # --- Status move ---
     if move.base_power == 0 and move.effect != "counter":
         # Accuracy check for status moves with < 100 accuracy
         if move.accuracy > 0 and move.accuracy < 100:
             hit_prob = move.accuracy / 100
+            # Pure misses do not count as move-use for Choice Band lock.
             miss_results = [(1 - hit_prob, state)]
-            hit_states = execute_status_move(state, player, move)
+            hit_states = execute_status_move(state_with_last_move, player, move)
             return miss_results + [(hit_prob * p, s) for p, s in hit_states]
-        return execute_status_move(state, player, move)
+        return execute_status_move(state_with_last_move, player, move)
 
     # --- Counter (special: fixed damage, accuracy 100, -5 priority) ---
     if move.effect == "counter":
-        return execute_status_move(state, player, move)
+        return execute_status_move(state_with_last_move, player, move)
 
     # --- Damaging move ---
     # Accuracy check
@@ -961,11 +980,13 @@ def execute_single_move(state: BattleState, player: str,
 
     results = []
     if hit_prob < 1.0:
-        results.append((1 - hit_prob, state))  # Miss
+        # Pure misses should not mark the move as used for downstream
+        # Choice Band lock handling.
+        results.append((1 - hit_prob, state))
 
     # Crit branching: only branch when crit changes outcome
     for is_crit, crit_prob in [(False, 1 - CRIT_RATE), (True, CRIT_RATE)]:
-        dmg_outcomes = apply_damage_rolls(state, player, move,
+        dmg_outcomes = apply_damage_rolls(state_with_last_move, player, move,
                                           target_player, is_crit)
         for p_dmg, s_dmg in dmg_outcomes:
             # Secondary effect
