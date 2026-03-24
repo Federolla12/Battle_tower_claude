@@ -2,12 +2,19 @@
  * Gen 3 Battle Engine - Fast Rollout Simulator (C Extension)
  * Data-driven: move data passed from Python at init time via init_moves_data().
  *
- * Compile:
+ * Compile (single-threaded):
  *   Linux:   gcc -O3 -shared -fPIC -o gen3/rollout.so gen3/rollout.c -lm
  *   Windows: gcc -O3 -shared -o gen3/rollout.dll gen3/rollout.c
+ *
+ * Compile (OpenMP — recommended, uses all CPU cores):
+ *   Linux:   gcc -O3 -shared -fPIC -fopenmp -o gen3/rollout.so gen3/rollout.c -lm
+ *   Windows: gcc -O3 -shared -fopenmp -o gen3/rollout.dll gen3/rollout.c
  */
 #include <stdlib.h>
 #include <string.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #ifdef _WIN32
   #define EXPORT __declspec(dllexport)
@@ -165,8 +172,8 @@ static int clamp(int v,int l,int h){return v<l?l:v>h?h:v;}
 static int astg(int b,int s){int i=clamp(s,-6,6)+6;return b*SN[i]/SD[i];}
 static int espd(int spe,int ss,int st){int s=astg(spe,ss);if(st==ST_PARA)s/=4;return s<1?1:s;}
 
-/* ── PRNG ────────────────────────────────────────────────────────── */
-static unsigned rs=12345;
+/* ── PRNG (thread-local so OpenMP threads don't share state) ─────── */
+static __thread unsigned rs=12345;
 static int  ri(int n){rs^=rs<<13;rs^=rs>>17;rs^=rs<<5;return(int)(rs%(unsigned)n);}
 static float rf(void){rs^=rs<<13;rs^=rs>>17;rs^=rs<<5;return(float)(rs&0x7FFFFFFF)/(float)0x80000000;}
 
@@ -663,23 +670,37 @@ static void sim_turn(State*s,Act a0,Act a1){
 EXPORT int run_rollouts(State*init,int nsim,unsigned int seed){
     if(!MV||!NMV)return nsim/2;  /* not initialised: return 50% */
     init_tc();
-    rs=seed;
     int wins=0;
+#ifdef _OPENMP
+    #pragma omp parallel reduction(+:wins)
+    {
+        /* Seed each thread's RNG independently from the master seed */
+        rs = seed ^ ((unsigned)omp_get_thread_num() * 2654435761u);
+        #pragma omp for schedule(static)
+        for(int sim=0;sim<nsim;sim++){
+#else
+    rs=seed;
     for(int sim=0;sim<nsim;sim++){
-        State s=*init;
-        for(int t=0;t<80&&!is_term(&s);t++){
-            /* forced switches for fainted mons */
-            for(int pp=0;pp<2;pp++){
-                if(AM(&s,pp).hp<=0){
-                    int ch[3],nc=abench(&s,pp,ch);
-                    if(nc>0)do_sw(&s,pp,ch[ri(nc)]);
+#endif
+            State s=*init;
+            for(int t=0;t<80&&!is_term(&s);t++){
+                /* forced switches for fainted mons */
+                for(int pp=0;pp<2;pp++){
+                    if(AM(&s,pp).hp<=0){
+                        int ch[3],nc=abench(&s,pp,ch);
+                        if(nc>0)do_sw(&s,pp,ch[ri(nc)]);
+                    }
                 }
+                if(is_term(&s))break;
+                Act a0=choose_act(&s,0),a1=choose_act(&s,1);
+                sim_turn(&s,a0,a1);
             }
-            if(is_term(&s))break;
-            Act a0=choose_act(&s,0),a1=choose_act(&s,1);
-            sim_turn(&s,a0,a1);
-        }
-        if(who_won(&s)==0)wins++;
+            if(who_won(&s)==0)wins++;
+#ifdef _OPENMP
+        }   /* end omp for */
+    }       /* end omp parallel */
+#else
     }
+#endif
     return wins;
 }

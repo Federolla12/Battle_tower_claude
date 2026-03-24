@@ -83,15 +83,22 @@ def init_game():
 # ============================================================
 # Background analysis
 # ============================================================
+ANALYSIS_TIMEOUT = 60  # seconds — skip remaining stages after this
+
 def run_analysis(state):
     global analysis_result, analysis_depth, analysis_running, analysis_error, analysis_current_depth
     analysis_running = True
     try:
-        # depth 0: pure MC, instant baseline
-        # depth 1: 1-ply lookahead (~1-5s depending on branching)
-        # depth 2: 2-ply lookahead (~15-20s background; noisy but directionally correct)
-        stages = [(0,300),(1,100),(1,300),(2,20)]
+        # With OpenMP parallel rollouts (~450K games/sec on 8 cores):
+        #   depth 0 mc=500:  ~0.1s  — instant baseline
+        #   depth 1 mc=300:  ~3s    — 1-ply quick pass
+        #   depth 1 mc=800:  ~7s    — 1-ply refined
+        #   depth 2 mc=50:   ~35s   — 2-ply rough (background)
+        stages = [(0, 500), (1, 300), (1, 800), (2, 50)]
+        t_start = time.time()
         for d, mc in stages:
+            if time.time() - t_start > ANALYSIS_TIMEOUT:
+                break
             with lock:
                 if game_state is not state:
                     return
