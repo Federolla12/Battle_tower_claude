@@ -1,0 +1,108 @@
+diff --git a/gen3/executor.py b/gen3/executor.py
+--- a/gen3/executor.py
++++ b/gen3/executor.py
+@@
+ def execute_single_move(state: BattleState, player: str,
+                         move: MoveDef, allow_sleep_check: bool = True
+                         ) -> Dist:
+@@
+-    # Update last_move
+-    new_atk = replace(attacker, last_move=move.name)
+-    state = state.set_active(player, new_atk)
++    # NOTE:
++    # We intentionally do NOT set last_move before the accuracy branch.
++    # Doing so makes pure miss outcomes indistinguishable from successful
++    # move-use outcomes in the turn layer, which in turn can cause
++    # Choice Band to lock on misses.
++    #
++    # Instead, we create a separate state_with_last_move and only use it on
++    # branches where the move actually counts as being used.
++    state_with_last_move = state.set_active(
++        player,
++        replace(attacker, last_move=move.name)
++    )
+@@
+     # --- Status move ---
+     if move.base_power == 0 and move.effect != "counter":
+         # Accuracy check for status moves with < 100 accuracy
+         if move.accuracy > 0 and move.accuracy < 100:
+             hit_prob = move.accuracy / 100
+-            miss_results = [(1 - hit_prob, state)]
+-            hit_states = execute_status_move(state, player, move)
++            # Pure misses do not count as move-use for Choice Band lock.
++            miss_results = [(1 - hit_prob, state)]
++            hit_states = execute_status_move(state_with_last_move, player, move)
+             return miss_results + [(hit_prob * p, s) for p, s in hit_states]
+-        return execute_status_move(state, player, move)
++        return execute_status_move(state_with_last_move, player, move)
+@@
+     # --- Counter (special: fixed damage, accuracy 100, -5 priority) ---
+     if move.effect == "counter":
+-        return execute_status_move(state, player, move)
++        return execute_status_move(state_with_last_move, player, move)
+@@
+     results = []
+     if hit_prob < 1.0:
+-        results.append((1 - hit_prob, state))  # Miss
++        # Pure misses should not mark the move as used for downstream
++        # Choice Band lock handling.
++        results.append((1 - hit_prob, state))
+@@
+     # Crit branching: only branch when crit changes outcome
+     for is_crit, crit_prob in [(False, 1 - CRIT_RATE), (True, CRIT_RATE)]:
+-        dmg_outcomes = apply_damage_rolls(state, player, move,
++        dmg_outcomes = apply_damage_rolls(state_with_last_move, player, move,
+                                           target_player, is_crit)
+         for p_dmg, s_dmg in dmg_outcomes:
+             # Secondary effect
+             eff_outcomes = apply_secondary_effect(
+                 s_dmg, player, target_player, move
+             )
+             for p_eff, s_eff in eff_outcomes:
+                 total_p = hit_prob * crit_prob * p_dmg * p_eff
+                 if total_p > 1e-12:
+                     results.append((total_p, s_eff))
+@@
+     return results
+
+diff --git a/gen3/turn.py b/gen3/turn.py
+--- a/gen3/turn.py
++++ b/gen3/turn.py
+@@
+ def execute_player_action(state: BattleState, player: str,
+                           action: Action, was_hit: bool = False
+                           ) -> Dist:
+@@
+         for p_conf, s_conf, can_act_conf in conf_outcomes:
+             if not can_act_conf:
+                 results.append((p_status * p_conf, s_conf))
+                 continue
+             # Execute the move
+             move_results = execute_single_move(s_conf, player, move)
+             for p_move, s_move in move_results:
+-                # Choice Band: lock only when move actually fires
+-                s_move = _apply_choice_lock(s_move, player, action)
++                # Choice Band lock rule:
++                # only lock when this branch actually recorded the move as used.
++                # Pure miss branches now keep last_move unchanged in executor.py.
++                if s_move.active(player).last_move == move.name:
++                    s_move = _apply_choice_lock(s_move, player, action)
+                 results.append((p_status * p_conf * p_move, s_move))
+@@
+     # Sample one outcome
+     r = random.random()
+     cumulative = 0.0
+     for prob, s in results:
+         cumulative += prob
+         if r <= cumulative:
+-            # Choice Band: lock only when move actually fires
+-            return _apply_choice_lock(s, player, action), True
+-    return _apply_choice_lock(results[-1][1], player, action), True
++            # Lock only on sampled branches that actually recorded the move.
++            if s.active(player).last_move == move.name:
++                s = _apply_choice_lock(s, player, action)
++            return s, True
++    s = results[-1][1]
++    if s.active(player).last_move == move.name:
++        s = _apply_choice_lock(s, player, action)
++    return s, True
