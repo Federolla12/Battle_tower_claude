@@ -207,7 +207,7 @@ static void chk_berry(Mon*m){
 static void chk_lohp_berry(Mon*m){
     if(m->hp<=0||m->item_c)return;
     if(m->item==IT_SITRUS&&m->hp<=m->mhp/2){
-        int h=m->mhp/4;m->hp+=h;if(m->hp>m->mhp)m->hp=m->mhp;m->item_c=1;return;}
+        m->hp+=30;if(m->hp>m->mhp)m->hp=m->mhp;m->item_c=1;return;}
     if(m->item==IT_SALAC &&m->hp<=m->mhp/4){if(m->ss<6)m->ss++;m->item_c=1;return;}
     if(m->item==IT_PETAYA&&m->hp<=m->mhp/4){if(m->sas<6)m->sas++;m->item_c=1;return;}
     if(m->item==IT_LIECHI&&m->hp<=m->mhp/4){if(m->as<6)m->as++;m->item_c=1;return;}

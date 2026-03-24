@@ -509,7 +509,7 @@ def _apply_choice_lock(state: BattleState, player: str,
     if action[0] != "move":
         return state
     mon = state.active(player)
-    if mon.item == "Choice Band" and not mon.item_consumed:
+    if mon.item in ("Choice Band", "Choice Specs") and not mon.item_consumed:
         if mon.move_locked is None and mon.alive():
             new_mon = replace(mon, move_locked=action[1])
             return state.set_active(player, new_mon)

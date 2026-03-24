@@ -1052,6 +1052,9 @@ def apply_end_of_turn(state: BattleState) -> BattleState:
                       or "Steel" in mon.types)
             if not immune:
                 hp -= max(1, mon.max_hp // 16)
+        elif state.weather == "hail":
+            if "Ice" not in (mon.types[0], mon.types[1]):
+                hp -= max(1, mon.max_hp // 16)
 
         # Leftovers
         if mon.item == "Leftovers":
