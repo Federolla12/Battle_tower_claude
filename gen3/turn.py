@@ -26,6 +26,8 @@ from .executor import (
 )
 from .damage import apply_stage
 
+CONF_SELF_HIT = 0.5  # 50% confusion self-hit chance
+
 # Type alias
 Action = Tuple[str, str]  # ("move", move_name) or ("switch", idx)
 
@@ -38,19 +40,23 @@ def execute_switch(state: BattleState, player: str,
                    target_idx: int) -> BattleState:
     """
     Switch the active Pokemon. Handles:
+    - Natural Cure (cure status on switch out)
     - Clear volatiles on the outgoing mon
     - Update active index
-    - Switch-in effects (Spikes damage)
-    - Choice Band lock reset
-    - Intimidate (not on these teams, but structured for it)
+    - Switch-in effects (Spikes, Sand Stream, Intimidate)
     """
-    opp = state.opp(player)
     team = list(state.get_team(player))
     old_idx = state.get_active_idx(player)
     old_mon = team[old_idx]
 
+    # Natural Cure: cure status when switching out
+    status_out = old_mon.status
+    if old_mon.ability == "Natural Cure" and old_mon.status is not None:
+        status_out = None
+
     # Clear volatiles on outgoing Pokemon
     cleared = replace(old_mon,
+                      status=status_out, status_turns=0 if status_out is None else old_mon.status_turns,
                       atk_stage=0, def_stage=0, spa_stage=0,
                       spd_stage=0, spe_stage=0,
                       substitute_hp=0, taunt_turns=0,
@@ -67,8 +73,38 @@ def execute_switch(state: BattleState, player: str,
     else:
         state = replace(state, team_p2=tuple(team), active_p2=target_idx)
 
-    # Switch-in effects: Spikes damage
+    # Switch-in effects
     state = _apply_spikes_on_switch(state, player)
+    state = _apply_entry_effects(state, player)
+
+    return state
+
+
+def _apply_entry_effects(state: BattleState, player: str) -> BattleState:
+    """On-entry ability effects: Sand Stream, Intimidate."""
+    mon = state.active(player)
+    opp = state.opp(player)
+    opp_mon = state.active(opp)
+
+    # Sand Stream: set permanent sandstorm (weather_turns=10000 = indefinite)
+    if mon.ability == "Sand Stream":
+        state = replace(state, weather="sand", weather_turns=10000)
+
+    # Drizzle: rain
+    if mon.ability == "Drizzle":
+        state = replace(state, weather="rain", weather_turns=10000)
+
+    # Drought: sun
+    if mon.ability == "Drought":
+        state = replace(state, weather="sun", weather_turns=10000)
+
+    # Intimidate: lower opponent's Atk by 1
+    if mon.ability == "Intimidate" and opp_mon.alive():
+        if opp_mon.ability not in ("Clear Body", "White Smoke", "Hyper Cutter"):
+            new_stage = max(-6, opp_mon.atk_stage - 1)
+            if new_stage != opp_mon.atk_stage:
+                new_opp = replace(opp_mon, atk_stage=new_stage)
+                state = state.set_active(opp, new_opp)
 
     return state
 
@@ -98,6 +134,45 @@ def _apply_spikes_on_switch(state: BattleState, player: str) -> BattleState:
     new_hp = max(0, mon.current_hp - dmg)
     new_mon = replace(mon, current_hp=new_hp)
     return state.set_active(player, new_mon)
+
+
+# ============================================================
+# Confusion resolution
+# ============================================================
+
+def _resolve_confusion(state: BattleState, player: str) -> List[Tuple[float, BattleState, bool]]:
+    """
+    Handle one turn of confusion. Returns [(prob, state, can_act)].
+    - Decrements confused_turns.
+    - If turns reach 0: snap out, can act.
+    - Otherwise: 50% self-hit (can't act), 50% snap through and act.
+    """
+    mon = state.active(player)
+    new_turns = mon.confused_turns - 1
+
+    if new_turns <= 0:
+        # Snap out of confusion
+        new_mon = replace(mon, confused=False, confused_turns=0)
+        return [(1.0, state.set_active(player, new_mon), True)]
+
+    # Still confused: update counter
+    confused_mon = replace(mon, confused_turns=new_turns)
+    s_still = state.set_active(player, confused_mon)
+
+    # Compute confusion self-hit damage (40 BP typeless physical)
+    # Formula: floor(floor(22 * 40 * Atk / Def) / 50) + 2
+    atk = apply_stage(mon.base_atk, mon.atk_stage)
+    if mon.status == "burn" and mon.ability != "Guts":
+        atk = atk // 2
+    def_ = max(1, apply_stage(mon.base_def, mon.def_stage))
+    dmg = math.floor(math.floor(22 * 40 * atk / def_) / 50) + 2
+    dmg = max(1, dmg)
+
+    new_hp = max(0, confused_mon.current_hp - dmg)
+    hit_mon = replace(confused_mon, current_hp=new_hp)
+    s_hit = state.set_active(player, hit_mon)
+
+    return [(CONF_SELF_HIT, s_hit, False), (1 - CONF_SELF_HIT, s_still, True)]
 
 
 # ============================================================
@@ -263,21 +338,27 @@ def execute_player_action(state: BattleState, player: str,
 
     for p_status, s_after_status, can_act in status_outcomes:
         if not can_act:
-            results.append((p_status, s_after_status))
-            continue
+            # Sleep Talk exception: can still act while asleep
+            sleeping = s_after_status.active(player).status == "sleep"
+            if not (sleeping and move_name == "Sleep Talk"):
+                results.append((p_status, s_after_status))
+                continue
 
-        # Sleep Talk special case: can use moves while asleep
-        # (check_can_move handles the sleep counter, but if the mon is
-        #  still asleep and using Sleep Talk, we allow it)
-        current_mon = s_after_status.active(player)
-        if current_mon.status == "sleep" and move_name != "Sleep Talk":
-            results.append((p_status, s_after_status))
-            continue
+        # Confusion check (applied when mon can otherwise act)
+        mon_c = s_after_status.active(player)
+        if mon_c.confused:
+            conf_outcomes = _resolve_confusion(s_after_status, player)
+        else:
+            conf_outcomes = [(1.0, s_after_status, True)]
 
-        # Execute the move
-        move_results = execute_single_move(s_after_status, player, move)
-        for p_move, s_move in move_results:
-            results.append((p_status * p_move, s_move))
+        for p_conf, s_conf, can_act_conf in conf_outcomes:
+            if not can_act_conf:
+                results.append((p_status * p_conf, s_conf))
+                continue
+            # Execute the move
+            move_results = execute_single_move(s_conf, player, move)
+            for p_move, s_move in move_results:
+                results.append((p_status * p_conf * p_move, s_move))
 
     return results
 
@@ -513,6 +594,30 @@ def _sim_player_action(state: BattleState, player: str,
             new_mon = replace(mon, status=None, status_turns=0)
             state = state.set_active(player, new_mon)
 
+    # Confusion check
+    mon = state.active(player)
+    if mon.confused:
+        new_turns = mon.confused_turns - 1
+        if new_turns <= 0:
+            mon = replace(mon, confused=False, confused_turns=0)
+            state = state.set_active(player, mon)
+        else:
+            confused_mon = replace(mon, confused_turns=new_turns)
+            if random.random() < CONF_SELF_HIT:
+                # Self-hit
+                atk = apply_stage(mon.base_atk, mon.atk_stage)
+                if mon.status == "burn" and mon.ability != "Guts":
+                    atk = atk // 2
+                def_ = max(1, apply_stage(mon.base_def, mon.def_stage))
+                dmg = math.floor(math.floor(22 * 40 * atk / def_) / 50) + 2
+                dmg = max(1, dmg)
+                new_hp = max(0, confused_mon.current_hp - dmg)
+                state = state.set_active(player, replace(confused_mon, current_hp=new_hp))
+                return state, False
+            else:
+                state = state.set_active(player, confused_mon)
+                mon = confused_mon
+
     # Execute move via sampling from the distribution
     results = execute_single_move(state, player, move)
     if not results:
@@ -588,13 +693,27 @@ def choose_rollout_action(state: BattleState, player: str) -> Action:
                     weights.append(2.0)
                 else:
                     weights.append(0.2)
-            elif move.effect == "curse_normal":
-                weights.append(1.2)
+            elif move.effect == "recover_half":
+                if mon.current_hp < mon.max_hp * 2 // 3:
+                    weights.append(2.0)
+                else:
+                    weights.append(0.1)
+            elif move.effect in ("curse_normal", "atk_plus2_self",
+                                 "atk_spe_plus1_self", "spa_spd_plus1_self",
+                                 "spe_plus2_self", "spd_plus2_self"):
+                weights.append(1.5)
             elif move.effect == "sleep_talk":
                 if mon.status == "sleep":
                     weights.append(3.0)
                 else:
                     weights.append(0.01)
+            elif move.effect in ("sleep_status", "confuse_status"):
+                if opp_mon.status is not None or opp_mon.confused:
+                    weights.append(0.05)
+                else:
+                    weights.append(2.0)
+            elif move.effect == "lay_spikes":
+                weights.append(0.5)
             else:
                 weights.append(0.8)
 

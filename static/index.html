@@ -5,16 +5,20 @@
 <title>Gen 3 Battle Engine</title>
 <style>
 :root{--bg:#1a1b26;--pn:#24283b;--pn2:#2f3347;--fg:#c0caf5;--dm:#787c99;--ac:#7aa2f7;--gn:#9ece6a;--rd:#f7768e;--yl:#e0af68;--or:#ff9e64;--pu:#bb9af7;--cy:#7dcfff}
-*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-.wrap{display:grid;grid-template-columns:1fr 280px;max-width:1150px;margin:0 auto;min-height:100vh}
-.main{padding:12px 18px}
-.hdr{font-size:12px;color:var(--dm);text-align:center;padding:6px 0 12px;letter-spacing:2px;text-transform:uppercase}
-.field{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+.wrap{display:grid;grid-template-columns:1fr 290px;max-width:1180px;margin:0 auto;min-height:100vh}
+.main{padding:12px 18px;min-width:0}
+.hdr{font-size:11px;color:var(--dm);text-align:center;padding:4px 0 10px;letter-spacing:2px;text-transform:uppercase}
+
+/* ─── Battle field ─── */
+.field{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .team-box{background:var(--pn);border-radius:10px;padding:12px}
 .team-label{font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:600}
-.act-mon{margin-bottom:8px}
+.act-mon{margin-bottom:6px}
 .mrow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
-.mname{font-size:16px;font-weight:600}.mhp{font-size:12px;color:var(--dm)}
+.mname{font-size:15px;font-weight:600}.mhp{font-size:12px;color:var(--dm);cursor:pointer}
+.mhp:hover{color:var(--ac);text-decoration:underline}
 .hpb{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin-bottom:4px}
 .hpf{height:100%;border-radius:3px;transition:width .4s}
 .hpg{background:var(--gn)}.hpy{background:var(--yl)}.hpr{background:var(--rd)}
@@ -22,36 +26,60 @@
 .stb{font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;text-transform:uppercase}
 .st-burn{background:#f7768e33;color:var(--rd)}.st-paralyze{background:#e0af6833;color:var(--yl)}
 .st-poison,.st-toxic{background:#bb9af733;color:var(--pu)}.st-sleep{background:#787c9933;color:var(--dm)}.st-freeze{background:#7dcfff33;color:var(--cy)}
+.conf-badge{background:#e0af6822;color:var(--yl);font-size:9px;padding:1px 5px;border-radius:3px}
 .su{color:var(--gn)}.sd{color:var(--rd)}
 .bench{display:flex;gap:4px;margin-top:6px}
-.bslot{flex:1;background:var(--pn2);border-radius:5px;padding:5px 7px;font-size:11px}
-.bslot.dead{opacity:.25}
+.bslot{flex:1;background:var(--pn2);border-radius:5px;padding:5px 7px;font-size:11px;cursor:pointer}
+.bslot:hover{background:var(--bg)}.bslot.dead{opacity:.25;cursor:default}
 .bname{font-weight:500;margin-bottom:2px}
 .bhp{height:3px;background:var(--bg);border-radius:2px;overflow:hidden}
 .bhpf{height:100%;border-radius:2px}
+.weather-bar{background:var(--pn2);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--dm);margin-bottom:8px;display:none}
 
-.pick-area{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px}
+/* ─── Move pickers ─── */
+.pick-area{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px}
 .pick-box{background:var(--pn);border-radius:10px;padding:12px}
 .pick-label{font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:600}
 .pick-sel{font-size:13px;color:var(--ac);font-weight:600;margin-bottom:8px;min-height:20px}
-.mbtn{display:block;width:100%;background:var(--pn2);border:2px solid transparent;border-radius:6px;padding:8px 10px;margin-bottom:4px;cursor:pointer;text-align:left;transition:all .12s;color:var(--fg);font-size:13px}
+.mbtn{display:block;width:100%;background:var(--pn2);border:2px solid transparent;border-radius:6px;padding:7px 10px;margin-bottom:4px;cursor:pointer;text-align:left;transition:all .12s;color:var(--fg);font-size:13px}
 .mbtn:hover{border-color:var(--ac);background:var(--bg)}
 .mbtn.sel{border-color:var(--gn);background:#9ece6a12}
-.mbtn.best-hint{border-color:var(--gn)}
+.mbtn.best-hint{border-color:var(--yl)}
 .mbtn .evl{float:right;font-weight:700;font-size:12px}
 .mbtn.sw{font-size:12px;color:var(--dm)}
 .mbtn.sw .sw-hp{font-size:11px;margin-left:4px}
 .mbtn:disabled{opacity:.25;cursor:default;border-color:transparent}
+.teff{font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px;vertical-align:middle}
+.teff-4{background:#9ece6a33;color:var(--gn)}.teff-2{background:#9ece6a22;color:var(--gn)}
+.teff-h{background:#e0af6822;color:var(--yl)}.teff-0{background:#787c9922;color:var(--dm)}
+.dmgr{font-size:10px;color:var(--dm);float:right;margin-right:4px;margin-top:1px}
 
-.go-row{text-align:center;margin-bottom:14px}
-.go-btn{padding:10px 40px;background:var(--gn);color:var(--bg);border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:1px;transition:all .15s}
+/* ─── Preview / Outcome area ─── */
+.go-row{text-align:center;margin-bottom:10px;display:flex;gap:8px;justify-content:center;align-items:center}
+.go-btn{padding:10px 36px;background:var(--gn);color:var(--bg);border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:1px;transition:all .15s}
 .go-btn:hover{background:#b9e86f}
 .go-btn:disabled{background:var(--pn2);color:var(--dm);cursor:default}
+.back-btn{padding:9px 18px;background:transparent;color:var(--dm);border:1px solid var(--pn2);border-radius:8px;font-size:13px;cursor:pointer}
+.back-btn:hover{background:var(--pn2);color:var(--fg)}
 
+.outcome-area{margin-bottom:12px}
+.outcome-hdr{font-size:11px;color:var(--dm);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.outcome-card{display:flex;align-items:flex-start;gap:12px;background:var(--pn);border:2px solid transparent;border-radius:8px;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:border-color .12s}
+.outcome-card:hover{border-color:var(--ac)}
+.oc-prob{font-size:20px;font-weight:700;min-width:54px;text-align:right;flex-shrink:0;padding-top:2px}
+.oc-events{flex:1;font-size:12px;line-height:1.6}
+.oc-event{color:var(--fg)}
+.oc-commit{padding:6px 14px;background:var(--ac);color:var(--bg);border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;flex-shrink:0;transition:background .12s}
+.oc-commit:hover{background:#9ab8ff}
+
+/* ─── Winner / Force-switch ─── */
 .winner-banner{text-align:center;padding:16px;border-radius:10px;font-size:18px;font-weight:700;margin:12px 0}
 .winner-banner.p1{background:#9ece6a18;color:var(--gn);border:2px solid var(--gn)}
 .winner-banner.p2{background:#f7768e18;color:var(--rd);border:2px solid var(--rd)}
+.force-sw{background:var(--pn);border-radius:10px;padding:14px;margin-bottom:10px;text-align:center}
+.force-sw .fl{color:var(--yl);font-size:13px;margin-bottom:8px}
 
+/* ─── Sidebar ─── */
 .sidebar{background:var(--pn);border-left:1px solid var(--pn2);padding:12px;display:flex;flex-direction:column}
 .ev-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
 .ev-t{font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px}
@@ -64,188 +92,935 @@
 .eline{background:var(--pn2);border-radius:7px;padding:8px 10px;margin-bottom:12px;font-size:12px}
 .ebest{font-weight:600;margin-bottom:2px}
 .edet{color:var(--dm);font-size:11px}
-.log-s{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.log-s{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
 .log-t{font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
 .log-e{flex:1;overflow-y:auto}
 .lentry{padding:4px 0;border-bottom:1px solid var(--pn2);font-size:12px}
 .lt{color:var(--dm);font-size:10px}.lp1{color:var(--ac)}.lp2{color:var(--or)}
-.ctrls{padding-top:8px;border-top:1px solid var(--pn2);display:flex;gap:5px}
-.cbtn{flex:1;padding:7px;border:1px solid var(--pn2);background:transparent;color:var(--dm);border-radius:5px;cursor:pointer;font-size:11px}
+.ctrls{padding-top:8px;border-top:1px solid var(--pn2);display:flex;gap:4px;flex-wrap:wrap}
+.cbtn{flex:1;min-width:44px;padding:6px;border:1px solid var(--pn2);background:transparent;color:var(--dm);border-radius:5px;cursor:pointer;font-size:11px;white-space:nowrap}
 .cbtn:hover{background:var(--pn2);color:var(--fg)}
 .cbtn:disabled{opacity:.3;cursor:default}
+.cbtn.edit{color:var(--yl);border-color:var(--yl)22}
+.cbtn.edit:hover{background:#e0af6811}
 
-.force-sw{background:var(--pn);border-radius:10px;padding:14px;margin-bottom:10px;text-align:center}
-.force-sw .fl{color:var(--yl);font-size:13px;margin-bottom:8px}
+/* ─── Modals ─── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto}
+.modal-bg.open{display:flex}
+.modal{background:var(--pn);border-radius:12px;padding:20px;width:760px;max-width:95vw;max-height:85vh;overflow-y:auto}
+.modal-title{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--ac)}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.modal-col label{font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:4px}
+.modal-col textarea{width:100%;height:200px;background:var(--bg);border:1px solid var(--pn2);border-radius:6px;color:var(--fg);font-family:monospace;font-size:11px;padding:8px;resize:vertical}
+.modal-col textarea:focus{outline:none;border-color:var(--ac)}
+.modal-preview{font-size:11px;min-height:18px;margin-top:4px}
+.modal-preview.ok{color:var(--gn)}.modal-preview.err{color:var(--rd)}.modal-preview.warn{color:var(--yl)}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.modal-btns button{padding:8px 18px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600}
+.mbtn-apply{background:var(--gn);color:var(--bg)}.mbtn-apply:hover{background:#b9e86f}
+.mbtn-apply:disabled{background:var(--pn2);color:var(--dm);cursor:default}
+.mbtn-cancel{background:var(--pn2);color:var(--fg)}.mbtn-cancel:hover{background:var(--bg)}
+
+/* ─── State editor ─── */
+.se-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px}
+.se-col-title{font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600}
+.se-mon{background:var(--pn2);border-radius:8px;padding:10px;margin-bottom:8px}
+.se-mon-name{font-size:13px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.se-active-tag{font-size:9px;background:var(--ac);color:var(--bg);border-radius:3px;padding:1px 5px;font-weight:700}
+.se-row{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:12px;color:var(--dm)}
+.se-row label{min-width:44px}
+.se-row input[type=range]{flex:1;accent-color:var(--ac)}
+.se-row .hp-val{min-width:72px;font-size:11px;color:var(--fg);text-align:right}
+.se-row select,.se-row input[type=number]{background:var(--bg);color:var(--fg);border:1px solid var(--pn2);border-radius:4px;padding:3px 6px;font-size:12px}
+.se-row input[type=number]{width:52px}
+.se-stages{display:flex;gap:8px;flex-wrap:wrap}
+.se-stage{display:flex;align-items:center;gap:3px;font-size:11px}
+.se-stage label{color:var(--dm);width:28px}
+.se-stage input{width:44px;background:var(--bg);color:var(--fg);border:1px solid var(--pn2);border-radius:4px;padding:2px 4px;font-size:11px;text-align:center}
+.se-weather{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;color:var(--dm)}
+.se-weather select{background:var(--bg);color:var(--fg);border:1px solid var(--pn2);border-radius:4px;padding:4px 8px}
+
+/* ─── Tab buttons ─── */
+.tab-btn{background:transparent;border:1px solid transparent;border-radius:5px;padding:5px 12px;font-size:12px;color:var(--dm);cursor:pointer}
+.tab-btn.active{background:var(--ac);color:var(--bg);border-color:var(--ac);font-weight:600}
+.tab-btn:hover:not(.active){background:var(--pn2);color:var(--fg)}
+
+/* ─── BF set cards ─── */
+.bf-card{background:var(--pn2);border:2px solid transparent;border-radius:7px;padding:8px 10px;cursor:pointer;transition:border-color .12s}
+.bf-card:hover{border-color:var(--ac)}
+.bf-card.loaded{border-color:var(--gn)}
+.bf-name{font-size:13px;font-weight:600;margin-bottom:3px;display:flex;justify-content:space-between}
+.bf-meta{font-size:10px;color:var(--dm);margin-bottom:3px}
+.bf-moves{font-size:10px;color:var(--fg);line-height:1.5}
+.bf-slot-lbl{font-size:9px;background:var(--gn);color:var(--bg);border-radius:3px;padding:1px 4px;font-weight:700}
+
+/* ─── Slot preview ─── */
+.slot-card{background:var(--pn2);border-radius:6px;padding:8px 10px;font-size:11px}
+.slot-empty{color:var(--dm);font-style:italic}
+
+/* Quick-edit HP popup */
+.qedit-bg{display:none;position:fixed;inset:0;z-index:200}
+.qedit-bg.open{display:block}
+.qedit{position:fixed;background:var(--pn);border:1px solid var(--ac);border-radius:8px;padding:12px;z-index:201;width:220px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.qedit label{font-size:11px;color:var(--dm);display:block;margin-bottom:4px}
+.qedit input{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--pn2);border-radius:4px;padding:5px 8px;font-size:13px;margin-bottom:8px}
+.qedit input:focus{outline:none;border-color:var(--ac)}
+.qedit select{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--pn2);border-radius:4px;padding:5px 8px;font-size:12px;margin-bottom:8px}
+.qedit-btns{display:flex;gap:6px}
+.qedit-btns button{flex:1;padding:5px;border-radius:4px;border:none;cursor:pointer;font-size:12px;font-weight:600}
+.qedit-ok{background:var(--gn);color:var(--bg)}.qedit-cancel{background:var(--pn2);color:var(--fg)}
 </style>
 </head>
 <body>
 <div class="wrap">
+<!-- ═══ MAIN ═══ -->
 <div class="main">
 <div class="hdr">Gen 3 Battle Engine — Analysis Board</div>
 <div id="winner"></div>
 <div id="force-switch"></div>
+<div class="weather-bar" id="weather-bar"></div>
 
 <div class="field" id="field">
-  <div class="team-box" id="t1box"><div class="team-label">Player 1 (You)</div><div id="t1"></div></div>
-  <div class="team-box" id="t2box"><div class="team-label">Player 2 (Opponent)</div><div id="t2"></div></div>
+  <div class="team-box" id="t1box"><div class="team-label">Player 1</div><div id="t1"></div></div>
+  <div class="team-box" id="t2box"><div class="team-label">Player 2</div><div id="t2"></div></div>
 </div>
 
 <div class="pick-area" id="pick-area">
-  <div class="pick-box"><div class="pick-label">P1 Move</div><div class="pick-sel" id="p1sel">—</div><div id="p1moves"></div></div>
-  <div class="pick-box"><div class="pick-label">P2 Move</div><div class="pick-sel" id="p2sel">—</div><div id="p2moves"></div></div>
+  <div class="pick-box">
+    <div class="pick-label">P1 Move</div>
+    <div class="pick-sel" id="p1sel">—</div>
+    <div id="p1moves"></div>
+  </div>
+  <div class="pick-box">
+    <div class="pick-label">P2 Move</div>
+    <div class="pick-sel" id="p2sel">—</div>
+    <div id="p2moves"></div>
+  </div>
 </div>
 
-<div class="go-row"><button class="go-btn" id="gobtn" disabled onclick="go()">RESOLVE TURN</button></div>
+<div class="go-row" id="go-row">
+  <button class="go-btn" id="gobtn" disabled onclick="previewOutcomes()">PREVIEW OUTCOMES</button>
 </div>
 
+<!-- Outcome picker — shown after preview -->
+<div id="outcome-area" class="outcome-area" style="display:none"></div>
+</div>
+
+<!-- ═══ SIDEBAR ═══ -->
 <div class="sidebar">
-<div class="ev-hdr"><span class="ev-t">P1 Win Probability</span><span class="ev-d" id="edepth">...</span></div>
+<div class="ev-hdr">
+  <span class="ev-t">P1 Win Probability</span>
+  <span class="ev-d" id="edepth">...</span>
+</div>
 <div class="ev-bar"><div class="ev-fill" id="efill" style="width:50%"></div><div class="ev-val" id="eval">—</div></div>
 <div class="eline"><div class="ebest" id="ebest">Analyzing...</div><div class="edet" id="edet"></div></div>
-<div class="log-s"><div class="log-t">Battle Log</div><div class="log-e" id="log"><div class="lentry" style="color:var(--dm)">Battle start!</div></div></div>
-<div class="ctrls"><button class="cbtn" id="ubtn" onclick="undo()" disabled>Undo</button><button class="cbtn" onclick="reset()">New Game</button></div>
+<div class="log-s">
+  <div class="log-t">Battle Log</div>
+  <div class="log-e" id="log"><div class="lentry" style="color:var(--dm)">Battle start — select moves and click PREVIEW OUTCOMES</div></div>
+</div>
+<div class="ctrls">
+  <button class="cbtn" id="ubtn" onclick="undo()" disabled>← Undo</button>
+  <button class="cbtn" id="rbtn" onclick="redo()" disabled>Redo →</button>
+  <button class="cbtn" onclick="reset()">New</button>
+  <button class="cbtn" onclick="openTeamEditor()">Teams</button>
+  <button class="cbtn edit" onclick="openStateEditor()">✎ Edit</button>
+</div>
+</div>
+</div>
+
+<!-- ═══ TEAM EDITOR MODAL ═══ -->
+<div class="modal-bg" id="teamModal" onclick="if(event.target===this)closeTeamEditor()">
+<div class="modal" style="width:900px;max-width:97vw">
+  <div class="modal-title">Edit Teams</div>
+
+  <!-- Tab bar -->
+  <div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--pn2);padding-bottom:8px">
+    <button class="tab-btn active" id="tab-paste" onclick="switchTab('paste')">Showdown Paste</button>
+    <button class="tab-btn" id="tab-bf" onclick="switchTab('bf')">Battle Frontier Sets</button>
+  </div>
+
+  <!-- Paste tab -->
+  <div id="tab-paste-panel">
+    <div style="font-size:11px;color:var(--dm);margin-bottom:10px;line-height:1.5">
+      Paste a 3-Pokémon team in Showdown export format. Leave empty to keep current team.
+    </div>
+    <div class="modal-grid">
+      <div class="modal-col">
+        <label>Player 1 Team</label>
+        <textarea id="t1paste" placeholder="Salamence @ Lum Berry&#10;Ability: Intimidate&#10;EVs: 252 Atk / 4 SpD / 252 Spe&#10;Jolly Nature&#10;- Dragon Dance&#10;- Dragon Claw&#10;- Aerial Ace&#10;- Earthquake&#10;&#10;..."></textarea>
+        <div class="modal-preview" id="t1preview"></div>
+      </div>
+      <div class="modal-col">
+        <label>Player 2 Team</label>
+        <textarea id="t2paste" placeholder="Aggron @ Leftovers&#10;Ability: Sturdy&#10;EVs: 248 HP / 8 Atk / 252 Def&#10;Impish Nature&#10;- Rock Slide&#10;- Substitute&#10;- Focus Punch&#10;- Thunder Wave&#10;&#10;..."></textarea>
+        <div class="modal-preview" id="t2preview"></div>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="mbtn-cancel" onclick="closeTeamEditor()">Cancel</button>
+      <button class="mbtn-apply" id="applyTeamBtn" onclick="applyTeams()">Apply & Restart</button>
+    </div>
+  </div>
+
+  <!-- BF Sets tab -->
+  <div id="tab-bf-panel" style="display:none">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      <input id="bf-search" type="text" placeholder="Search species..." style="flex:1;min-width:140px;background:var(--bg);color:var(--fg);border:1px solid var(--pn2);border-radius:4px;padding:5px 8px;font-size:12px" oninput="bfSearch()">
+      <select id="bf-group" style="background:var(--bg);color:var(--fg);border:1px solid var(--pn2);border-radius:4px;padding:5px 8px;font-size:12px" onchange="bfSearch()">
+        <option value="">All groups</option>
+        <option value="Ungrouped">Ungrouped</option>
+        <option value="Group 1">Group 1</option>
+        <option value="Group 2">Group 2</option>
+        <option value="Group 3">Group 3</option>
+      </select>
+      <label style="font-size:11px;color:var(--dm);display:flex;align-items:center;gap:4px">
+        <input type="checkbox" id="bf-playable" checked onchange="bfSearch()"> Engine-supported only
+      </label>
+      <span id="bf-count" style="font-size:11px;color:var(--dm)"></span>
+    </div>
+
+    <!-- Which slot we're loading into -->
+    <div style="font-size:11px;color:var(--dm);margin-bottom:8px">
+      Load set into:
+      <select id="bf-slot" style="background:var(--bg);color:var(--fg);border:1px solid var(--pn2);border-radius:4px;padding:3px 6px;font-size:11px;margin-left:4px">
+        <option value="p1_0">P1 Slot 1</option>
+        <option value="p1_1">P1 Slot 2</option>
+        <option value="p1_2">P1 Slot 3</option>
+        <option value="p2_0">P2 Slot 1</option>
+        <option value="p2_1">P2 Slot 2</option>
+        <option value="p2_2">P2 Slot 3</option>
+      </select>
+      <span style="margin-left:8px;font-size:10px;color:var(--dm)">Click a set card to load it</span>
+    </div>
+
+    <div id="bf-results" style="max-height:420px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px"></div>
+
+    <div id="bf-pending" style="margin-top:12px;border-top:1px solid var(--pn2);padding-top:10px">
+      <div style="font-size:10px;color:var(--dm);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Loaded sets</div>
+      <div id="bf-slots-preview" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+    </div>
+
+    <div class="modal-btns" style="margin-top:12px">
+      <button class="mbtn-cancel" onclick="closeTeamEditor()">Cancel</button>
+      <button class="mbtn-apply" id="applyBfBtn" onclick="applyBfSets()">Apply & Restart</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ═══ STATE EDITOR MODAL ═══ -->
+<div class="modal-bg" id="stateModal" onclick="if(event.target===this)closeStateEditor()">
+<div class="modal" style="width:800px">
+  <div class="modal-title">✎ Edit Battle State</div>
+  <div style="font-size:11px;color:var(--dm);margin-bottom:12px">
+    Set the exact HP, status, and stat stages to match what you see in the real battle.
+    Click the HP numbers in the battle view for a quick single-mon edit.
+  </div>
+  <div class="se-weather">
+    <span>Weather:</span>
+    <select id="se-weather">
+      <option value="">None</option>
+      <option value="sun">Sun</option>
+      <option value="rain">Rain</option>
+      <option value="sand">Sand</option>
+      <option value="hail">Hail</option>
+    </select>
+  </div>
+  <div class="se-grid">
+    <div><div class="se-col-title">Player 1</div><div id="se-p1"></div></div>
+    <div><div class="se-col-title">Player 2</div><div id="se-p2"></div></div>
+  </div>
+  <div class="modal-btns">
+    <button class="mbtn-cancel" onclick="closeStateEditor()">Cancel</button>
+    <button class="mbtn-apply" onclick="applyStateEdit()">Apply Changes</button>
+  </div>
+</div>
+</div>
+
+<!-- ═══ QUICK HP EDIT ═══ -->
+<div class="qedit-bg" id="qeditBg" onclick="closeQuickEdit()">
+<div class="qedit" id="qedit" onclick="event.stopPropagation()">
+  <label id="qedit-label">Edit HP</label>
+  <input type="number" id="qedit-hp" min="0">
+  <label>Status</label>
+  <select id="qedit-status">
+    <option value="">None</option>
+    <option value="burn">Burn</option>
+    <option value="paralyze">Paralyze</option>
+    <option value="poison">Poison</option>
+    <option value="toxic">Toxic</option>
+    <option value="freeze">Freeze</option>
+    <option value="sleep">Sleep</option>
+  </select>
+  <div class="qedit-btns">
+    <button class="qedit-cancel" onclick="closeQuickEdit()">Cancel</button>
+    <button class="qedit-ok" onclick="applyQuickEdit()">Apply</button>
+  </div>
 </div>
 </div>
 
 <script>
-let poll=null, selP1=null, selP2=null, curState=null;
+// ─── State ───────────────────────────────────────────────────
+let poll = null;
+let selP1 = null, selP2 = null;
+let curState = null;
+let showingOutcomes = false;
+let qeditTarget = null;  // {player, monIdx, maxHp}
 
-function hpc(p){return p>50?'hpg':p>20?'hpy':'hpr'}
-function ec(p){return p>=50?'var(--gn)':p>=35?'var(--ac)':'var(--rd)'}
-function sb(s){return s?`<span class="stb st-${s}">${s}</span>`:''}
-function stc(m){return[['Atk',m.atkStage],['Def',m.defStage],['SpA',m.spaStage],['SpD',m.spdStage],['Spe',m.speStage]].filter(([_,v])=>v).map(([n,v])=>`<span class="${v>0?'su':'sd'}">${n}${v>0?'+':''}${v}</span>`).join(' ')}
+// ─── Utility ─────────────────────────────────────────────────
+function hpc(p){ return p > 50 ? 'hpg' : p > 20 ? 'hpy' : 'hpr' }
+function ec(p){ return p >= 50 ? 'var(--gn)' : p >= 35 ? 'var(--ac)' : 'var(--rd)' }
+function sb(m){
+  let s = '';
+  if (m.status) s += `<span class="stb st-${m.status}">${m.status}</span> `;
+  if (m.confused) s += `<span class="conf-badge">confused</span> `;
+  return s;
+}
+function stc(m){
+  return [['Atk',m.atkStage],['Def',m.defStage],['SpA',m.spaStage],['SpD',m.spdStage],['Spe',m.speStage]]
+    .filter(([,v]) => v)
+    .map(([n,v]) => `<span class="${v>0?'su':'sd'}">${n}${v>0?'+':''}${v}</span>`)
+    .join(' ');
+}
+function teffBadge(eff){
+  if (eff === undefined || eff === null) return '';
+  if (eff === 0) return '<span class="teff teff-0">0×</span>';
+  if (eff >= 4) return '<span class="teff teff-4">4×</span>';
+  if (eff >= 2) return '<span class="teff teff-2">2×</span>';
+  if (eff <= 0.25) return '<span class="teff teff-h">¼×</span>';
+  if (eff < 1) return '<span class="teff teff-h">½×</span>';
+  return '';
+}
+function dmgBadge(a){
+  if (!a.dmgPctMin && !a.dmgPctMax) return '';
+  if (a.typeEff === 0) return '';
+  if (a.dmgPctMin === a.dmgPctMax) return `<span class="dmgr">${a.dmgPctMin}%</span>`;
+  return `<span class="dmgr">${a.dmgPctMin}–${a.dmgPctMax}%</span>`;
+}
+function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
 
-function rTeam(el,team){
-  let act=team.find(m=>m.isActive)||team[0];
-  let bench=team.filter(m=>!m.isActive);
-  let p=act.maxHp>0?act.hp/act.maxHp*100:0;
-  let info=[];
-  if(act.item&&!act.itemConsumed)info.push(act.item);
-  if(act.substituteHp>0)info.push(`Sub ${act.substituteHp}HP`);
-  if(act.tauntTurns>0)info.push(`Taunt ${act.tauntTurns}t`);
-  if(act.moveLocked)info.push(`Locked: ${act.moveLocked}`);
+// ─── Render battle field ──────────────────────────────────────
+function rTeam(el, team, player){
+  let act = team.find(m => m.isActive) || team[0];
+  let bench = team.filter(m => !m.isActive);
+  let p = act.maxHp > 0 ? act.hp / act.maxHp * 100 : 0;
+  let info = [];
+  if (act.item && !act.itemConsumed) info.push(act.item);
+  if (act.substituteHp > 0) info.push(`Sub ${act.substituteHp}HP`);
+  if (act.tauntTurns > 0) info.push(`Taunt ${act.tauntTurns}t`);
+  if (act.moveLocked) info.push(`Locked: ${act.moveLocked}`);
 
-  let h=`<div class="act-mon" style="opacity:${act.alive?1:.3}">
-    <div class="mrow"><span class="mname">${act.species} ${sb(act.status)}</span><span class="mhp">${act.alive?act.hp+'/'+act.maxHp:'Fainted'}</span></div>
+  let actIdx = team.indexOf(act);
+
+  let h = `<div class="act-mon" style="opacity:${act.alive?1:.3}">
+    <div class="mrow">
+      <span class="mname">${act.species} ${sb(act)}</span>
+      <span class="mhp" onclick="openQuickEdit('${player}',${actIdx},${act.maxHp},'${escHtml(act.species)}')" title="Click to edit HP/status">${act.alive ? act.hp+'/'+act.maxHp : 'Fainted'}</span>
+    </div>
     <div class="hpb"><div class="hpf ${hpc(p)}" style="width:${p}%"></div></div>
     <div class="minfo">${info.join(' · ')} ${stc(act)}</div>
   </div><div class="bench">`;
-  bench.forEach(m=>{let bp=m.maxHp>0?m.hp/m.maxHp*100:0;
-    h+=`<div class="bslot${m.alive?'':' dead'}"><div class="bname">${m.species} ${sb(m.status)}</div><div class="bhp"><div class="bhpf ${hpc(bp)}" style="width:${bp}%"></div></div><div style="font-size:10px;color:var(--dm);margin-top:1px">${m.alive?m.hp+'/'+m.maxHp:'KO'}</div></div>`;
+
+  bench.forEach((m, bi) => {
+    let realIdx = team.indexOf(m);
+    let bp = m.maxHp > 0 ? m.hp / m.maxHp * 100 : 0;
+    h += `<div class="bslot${m.alive?'':' dead'}" onclick="${m.alive?`openQuickEdit('${player}',${realIdx},${m.maxHp},'${escHtml(m.species)}')`:''}">
+      <div class="bname">${m.species} ${sb(m)}</div>
+      <div class="bhp"><div class="bhpf ${hpc(bp)}" style="width:${bp}%"></div></div>
+      <div style="font-size:10px;color:var(--dm);margin-top:1px">${m.alive ? m.hp+'/'+m.maxHp : 'KO'}</div>
+    </div>`;
   });
-  h+='</div>';
-  el.innerHTML=el.querySelector('.team-label').outerHTML+h;
+  h += '</div>';
+  el.innerHTML = el.querySelector('.team-label').outerHTML + h;
 }
 
-function rMoves(elId,actions,player,analysis){
-  let el=document.getElementById(elId);
-  let evMap={};
-  if(analysis&&analysis.moves&&player==='p1'){
-    analysis.moves.forEach(m=>{evMap[m.name]=m});
+// ─── Render move buttons ──────────────────────────────────────
+function rMoves(elId, actions, player, analysis){
+  let el = document.getElementById(elId);
+  let evMap = {};
+  if (analysis && analysis.moves && player === 'p1'){
+    analysis.moves.forEach(m => { evMap[m.name] = m });
   }
-  let sel=player==='p1'?selP1:selP2;
-  let h='';
-  actions.forEach(a=>{
-    let key=JSON.stringify(a.type==='move'?['move',a.id]:['switch',a.id]);
-    let isSel=sel&&JSON.stringify(sel)===key;
-    let ev=evMap[a.label];
-    let evStr=ev?`<span class="evl" style="color:${ec(ev.winPct)}">${ev.winPct}%</span>`:'';
-    let best=ev&&ev.isBest?' best-hint':'';
-    if(a.type==='move'){
-      h+=`<button class="mbtn${isSel?' sel':''}${best}" onclick="pick('${player}',${key})">${a.label}${evStr}</button>`;
+  let sel = player === 'p1' ? selP1 : selP2;
+  let h = '';
+  actions.forEach(a => {
+    let key = JSON.stringify(a.type==='move' ? ['move',a.id] : ['switch',a.id]);
+    let isSel = sel && JSON.stringify(sel) === key;
+    let ev = evMap[a.label];
+    let evStr = ev ? `<span class="evl" style="color:${ec(ev.winPct)}">${ev.winPct}%</span>` : '';
+    let best = (ev && ev.isBest) ? ' best-hint' : '';
+    let dis = showingOutcomes ? ' disabled' : '';
+    if (a.type === 'move'){
+      let badge = teffBadge(a.typeEff), dmg = dmgBadge(a);
+      h += `<button class="mbtn${isSel?' sel':''}${best}"${dis} data-player="${player}" data-key='${key}'>${a.label}${badge}${dmg}${evStr}</button>`;
     } else {
-      h+=`<button class="mbtn sw${isSel?' sel':''}${best}" onclick="pick('${player}',${key})"${a.hp>0?'':' disabled'}>Switch→${a.species} <span class="sw-hp">${a.hp}/${a.maxHp}</span>${evStr}</button>`;
+      h += `<button class="mbtn sw${isSel?' sel':''}${best}"${dis || (!a.hp?' disabled':'')} data-player="${player}" data-key='${key}'>Switch→${a.species} <span class="sw-hp">${a.hp}/${a.maxHp}</span>${evStr}</button>`;
     }
   });
-  el.innerHTML=h;
+  el.innerHTML = h;
+  el.querySelectorAll('.mbtn:not(:disabled)').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (showingOutcomes) return;
+      let p = btn.dataset.player;
+      let action = JSON.parse(btn.dataset.key);
+      pick(p, action);
+    });
+  });
 }
 
-function pick(player,action){
-  if(player==='p1'){selP1=action;document.getElementById('p1sel').textContent=action[0]==='move'?action[1]:'Switch→'+curState.p1.find((_,i)=>i===action[1])?.species||action[1]}
-  else{selP2=action;document.getElementById('p2sel').textContent=action[0]==='move'?action[1]:'Switch→'+curState.p2.find((_,i)=>i===action[1])?.species||action[1]}
-  document.getElementById('gobtn').disabled=!(selP1&&selP2);
-  // Re-render to show selection highlight
+function pick(player, action){
+  if (player === 'p1'){
+    selP1 = action;
+    let t = curState ? curState.p1 : [];
+    document.getElementById('p1sel').textContent = action[0]==='move' ? action[1] : 'Switch→'+(t[action[1]]?.species||'?');
+  } else {
+    selP2 = action;
+    let t = curState ? curState.p2 : [];
+    document.getElementById('p2sel').textContent = action[0]==='move' ? action[1] : 'Switch→'+(t[action[1]]?.species||'?');
+  }
+  document.getElementById('gobtn').disabled = !(selP1 && selP2) || showingOutcomes;
   fetchState();
 }
 
+// ─── Eval sidebar ─────────────────────────────────────────────
 function rEval(an){
-  let f=document.getElementById('efill'),v=document.getElementById('eval'),d=document.getElementById('edepth'),
-      b=document.getElementById('ebest'),dt=document.getElementById('edet');
-  if(!an){f.style.width='50%';v.textContent='—';d.textContent='thinking...';d.className='ev-d run';b.textContent='Analyzing...';dt.textContent='';return}
-  f.style.width=an.positionValue+'%';v.textContent=an.positionValue.toFixed(1)+'%';
-  d.textContent='d'+an.depth+(an.running?'+':'');d.className=an.running?'ev-d run':'ev-d';
-  let bm=an.moves.find(m=>m.isBest);
-  if(bm){b.textContent='Best: '+bm.name;b.style.color=ec(bm.winPct);dt.textContent=bm.winPct+'% win — opp best: '+bm.counter+' | '+an.nodes.toLocaleString()+' nodes'}
+  let f=document.getElementById('efill'), v=document.getElementById('eval'),
+      d=document.getElementById('edepth'), b=document.getElementById('ebest'),
+      dt=document.getElementById('edet');
+  if (!an){
+    f.style.width='50%'; v.textContent='—'; d.textContent='thinking...';
+    d.className='ev-d run'; b.textContent='Analyzing...'; dt.textContent=''; return;
+  }
+  if (an.error){
+    d.textContent='err'; d.className='ev-d'; b.textContent='Analysis error';
+    b.style.color='var(--rd)'; dt.textContent=an.error; return;
+  }
+  f.style.width = an.positionValue+'%';
+  v.textContent = an.positionValue.toFixed(1)+'%';
+  let depthStr = an.running && an.currentDepth > an.depth ? `d${an.depth}→d${an.currentDepth}` : `d${an.depth}`;
+  d.textContent = depthStr + (an.running ? '…' : '');
+  d.className = an.running ? 'ev-d run' : 'ev-d';
+  let bm = an.moves.find(m => m.isBest);
+  if (bm){
+    b.textContent = 'Best P1: ' + bm.name;
+    b.style.color = ec(bm.winPct);
+    dt.textContent = bm.winPct+'% win · opp best: '+bm.counter+' · '+an.nodes.toLocaleString()+' nodes';
+  }
 }
 
 function rLog(log){
-  let el=document.getElementById('log');
-  if(!log||!log.length){el.innerHTML='<div class="lentry" style="color:var(--dm)">Battle start!</div>';return}
-  el.innerHTML=log.map(e=>`<div class="lentry"><span class="lt">T${e.turn+1}</span> <span class="lp1">${e.p1}</span> <span style="color:var(--dm)">vs</span> <span class="lp2">${e.p2}</span></div>`).join('');
-  el.scrollTop=el.scrollHeight;
+  let el = document.getElementById('log');
+  if (!log || !log.length){
+    el.innerHTML='<div class="lentry" style="color:var(--dm)">Battle start!</div>'; return;
+  }
+  el.innerHTML = log.map(e => {
+    let evts = (e.events && e.events.length)
+      ? `<div style="font-size:10px;color:var(--dm);padding-left:4px">${e.events.join(' · ')}</div>` : '';
+    return `<div class="lentry"><span class="lt">T${e.turn+1}</span> <span class="lp1">${e.p1}</span> <span style="color:var(--dm)">vs</span> <span class="lp2">${e.p2}</span>${evts}</div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
 }
 
+// ─── Fetch & render ───────────────────────────────────────────
 async function fetchState(){
-  try{
-    let r=await fetch('/api/state'),d=await r.json();
-    curState=d.state;
-    rTeam(document.getElementById('t1box'),d.state.p1);
-    rTeam(document.getElementById('t2box'),d.state.p2);
-    rEval(d.analysis);rLog(d.log);
-    document.getElementById('ubtn').disabled=!d.canUndo;
+  try {
+    let r = await fetch('/api/state'), d = await r.json();
+    curState = d.state;
+    rTeam(document.getElementById('t1box'), d.state.p1, 'p1');
+    rTeam(document.getElementById('t2box'), d.state.p2, 'p2');
+    rEval(d.analysis);
+    rLog(d.log);
+    document.getElementById('ubtn').disabled = !d.canUndo;
+    document.getElementById('rbtn').disabled = !d.canRedo;
 
-    let fsEl=document.getElementById('force-switch');
-    let pickEl=document.getElementById('pick-area');
-    let goEl=document.getElementById('gobtn');
-
-    // Handle forced switches or normal turn
-    if(d.state.isTerminal){
-      pickEl.style.display='none';goEl.style.display='none';fsEl.innerHTML='';
-      let w=d.state.winner;
-      document.getElementById('winner').innerHTML=`<div class="winner-banner ${w}">${w==='p1'?'Player 1 wins!':'Player 2 wins!'}</div>`;
-    } else if(d.state.p1NeedsSwitch||d.state.p2NeedsSwitch){
-      pickEl.style.display='none';goEl.style.display='none';
-      document.getElementById('winner').innerHTML='';
-      let who=d.state.p1NeedsSwitch?'p1':'p2';
-      let acts=who==='p1'?d.p1Actions:d.p2Actions;
-      let switches=acts.filter(a=>a.type==='switch');
-      let h=`<div class="force-sw"><div class="fl">${who==='p1'?'P1':'P2'}'s Pokemon fainted! Choose a switch-in:</div>`;
-      switches.forEach(a=>{h+=`<button class="mbtn sw" onclick="forceSw('${who}',${a.id})" style="display:inline-block;width:auto;margin:4px">Switch→${a.species} (${a.hp}/${a.maxHp})</button>`});
-      h+='</div>';fsEl.innerHTML=h;
+    // Weather
+    let wb = document.getElementById('weather-bar');
+    if (d.state.weather){
+      wb.style.display = '';
+      wb.textContent = `☁ ${d.state.weather.charAt(0).toUpperCase()+d.state.weather.slice(1)}`;
     } else {
-      pickEl.style.display='grid';goEl.style.display='';fsEl.innerHTML='';
-      document.getElementById('winner').innerHTML='';
-      rMoves('p1moves',d.p1Actions,'p1',d.analysis);
-      rMoves('p2moves',d.p2Actions,'p2',d.analysis);
-      goEl.disabled=!(selP1&&selP2);
+      wb.style.display = 'none';
     }
 
-    if(d.analysis&&!d.analysis.running){clearInterval(poll);poll=setInterval(fetchState,3000)}
-  }catch(e){console.error(e)}
+    let fsEl = document.getElementById('force-switch');
+    let pickEl = document.getElementById('pick-area');
+    let goRow = document.getElementById('go-row');
+    let outEl = document.getElementById('outcome-area');
+
+    if (d.state.isTerminal){
+      pickEl.style.display = 'none'; goRow.style.display = 'none';
+      outEl.style.display = 'none'; fsEl.innerHTML = '';
+      let w = d.state.winner;
+      document.getElementById('winner').innerHTML =
+        `<div class="winner-banner ${w}">${w==='p1'?'Player 1 wins!':'Player 2 wins!'}</div>`;
+    } else if (d.state.p1NeedsSwitch || d.state.p2NeedsSwitch){
+      pickEl.style.display = 'none'; goRow.style.display = 'none';
+      outEl.style.display = 'none'; showingOutcomes = false;
+      document.getElementById('winner').innerHTML = '';
+      let who = d.state.p1NeedsSwitch ? 'p1' : 'p2';
+      let acts = who === 'p1' ? d.p1Actions : d.p2Actions;
+      let sw = acts.filter(a => a.type === 'switch');
+      let h = `<div class="force-sw"><div class="fl">${who==='p1'?'P1':'P2'}'s Pokémon fainted — choose switch-in:</div>`;
+      sw.forEach(a => {
+        h += `<button class="mbtn sw" onclick="forceSw('${who}',${a.id})" style="display:inline-block;width:auto;margin:4px">
+          Switch→${a.species} (${a.hp}/${a.maxHp})</button>`;
+      });
+      h += '</div>'; fsEl.innerHTML = h;
+    } else {
+      pickEl.style.display = 'grid'; goRow.style.display = '';
+      fsEl.innerHTML = ''; document.getElementById('winner').innerHTML = '';
+      rMoves('p1moves', d.p1Actions, 'p1', d.analysis);
+      rMoves('p2moves', d.p2Actions, 'p2', d.analysis);
+      document.getElementById('gobtn').disabled = !(selP1 && selP2) || showingOutcomes;
+    }
+
+    if (d.analysis && !d.analysis.running) clearInterval(poll);
+  } catch(e){ console.error(e) }
 }
 
-async function go(){
-  if(!selP1||!selP2)return;
+// ─── Preview outcomes ─────────────────────────────────────────
+async function previewOutcomes(){
+  if (!selP1 || !selP2) return;
+  let btn = document.getElementById('gobtn');
+  btn.disabled = true; btn.textContent = 'Computing...';
   clearInterval(poll);
-  document.getElementById('gobtn').disabled=true;
-  document.getElementById('ebest').textContent='Thinking...';
-  let p1=selP1,p2=selP2;selP1=null;selP2=null;
-  document.getElementById('p1sel').textContent='—';
-  document.getElementById('p2sel').textContent='—';
-  await fetch('/api/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p1,p2})});
-  poll=setInterval(fetchState,500);fetchState();
+
+  try {
+    let r = await fetch('/api/outcomes', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({p1: selP1, p2: selP2})
+    });
+    let d = await r.json();
+    if (d.error){ btn.textContent='Error: '+d.error; btn.disabled=false; return; }
+
+    showingOutcomes = true;
+    renderOutcomes(d.outcomes);
+    document.getElementById('outcome-area').style.display = '';
+  } catch(e){
+    btn.textContent = 'Network error'; btn.disabled = false; return;
+  }
+
+  btn.textContent = 'PREVIEW OUTCOMES';
+  btn.disabled = true;  // disabled while outcomes are shown
+  poll = setInterval(fetchState, 2000);
+  fetchState();
 }
 
-async function forceSw(player,idx){
+function renderOutcomes(outcomes){
+  let n1 = selP1[0]==='move' ? selP1[1] : `Switch→${curState?.p1[selP1[1]]?.species||'?'}`;
+  let n2 = selP2[0]==='move' ? selP2[1] : `Switch→${curState?.p2[selP2[1]]?.species||'?'}`;
+
+  let h = `<div class="outcome-hdr">What actually happened? &nbsp;·&nbsp; <b style="color:var(--ac)">${n1}</b> vs <b style="color:var(--or)">${n2}</b></div>`;
+  outcomes.forEach(o => {
+    let col = o.prob >= 50 ? 'var(--gn)' : o.prob >= 15 ? 'var(--yl)' : 'var(--dm)';
+    let evHtml = o.events.map(e => `<div class="oc-event">${escHtml(e)}</div>`).join('');
+    h += `<div class="outcome-card" data-idx="${o.idx}" data-n1="${escHtml(n1)}" data-n2="${escHtml(n2)}">
+      <div class="oc-prob" style="color:${col}">${o.prob}%</div>
+      <div class="oc-events">${evHtml}</div>
+      <button class="oc-commit">This happened →</button>
+    </div>`;
+  });
+  h += `<div style="margin-top:8px"><button class="back-btn" onclick="cancelOutcomes()">← Change moves</button></div>`;
+
+  let el = document.getElementById('outcome-area');
+  el.innerHTML = h;
+  el.querySelectorAll('.outcome-card').forEach(card => {
+    card.querySelector('.oc-commit').addEventListener('click', e => {
+      e.stopPropagation();
+      commitOutcome(parseInt(card.dataset.idx), card.dataset.n1, card.dataset.n2);
+    });
+    card.addEventListener('click', () => {
+      commitOutcome(parseInt(card.dataset.idx), card.dataset.n1, card.dataset.n2);
+    });
+  });
+}
+
+function cancelOutcomes(){
+  showingOutcomes = false;
+  document.getElementById('outcome-area').style.display = 'none';
+  document.getElementById('outcome-area').innerHTML = '';
+  document.getElementById('gobtn').disabled = !(selP1 && selP2);
+  fetchState();
+}
+
+async function commitOutcome(idx, n1, n2){
   clearInterval(poll);
-  await fetch('/api/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player,idx})});
-  poll=setInterval(fetchState,500);fetchState();
+  document.getElementById('outcome-area').innerHTML = '<div style="color:var(--dm);padding:8px">Committing...</div>';
+
+  await fetch('/api/commit', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({idx, n1, n2})
+  });
+
+  selP1 = null; selP2 = null; showingOutcomes = false;
+  document.getElementById('p1sel').textContent = '—';
+  document.getElementById('p2sel').textContent = '—';
+  document.getElementById('outcome-area').style.display = 'none';
+  document.getElementById('outcome-area').innerHTML = '';
+
+  poll = setInterval(fetchState, 500);
+  fetchState();
 }
 
-async function undo(){clearInterval(poll);selP1=null;selP2=null;await fetch('/api/undo',{method:'POST'});poll=setInterval(fetchState,500);fetchState()}
-async function reset(){clearInterval(poll);selP1=null;selP2=null;await fetch('/api/reset',{method:'POST'});poll=setInterval(fetchState,500);fetchState()}
+// ─── Controls ─────────────────────────────────────────────────
+async function forceSw(player, idx){
+  clearInterval(poll);
+  await fetch('/api/switch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({player, idx})});
+  poll = setInterval(fetchState, 500); fetchState();
+}
 
-poll=setInterval(fetchState,500);fetchState();
+async function undo(){
+  clearInterval(poll);
+  showingOutcomes = false;
+  document.getElementById('outcome-area').style.display = 'none';
+  document.getElementById('outcome-area').innerHTML = '';
+  selP1 = null; selP2 = null;
+  document.getElementById('p1sel').textContent = '—';
+  document.getElementById('p2sel').textContent = '—';
+  await fetch('/api/undo', {method:'POST'});
+  poll = setInterval(fetchState, 500); fetchState();
+}
+
+async function redo(){
+  clearInterval(poll);
+  await fetch('/api/redo', {method:'POST'});
+  poll = setInterval(fetchState, 500); fetchState();
+}
+
+async function reset(){
+  clearInterval(poll);
+  showingOutcomes = false; selP1 = null; selP2 = null;
+  document.getElementById('p1sel').textContent = '—';
+  document.getElementById('p2sel').textContent = '—';
+  document.getElementById('outcome-area').style.display = 'none';
+  await fetch('/api/reset', {method:'POST'});
+  poll = setInterval(fetchState, 500); fetchState();
+}
+
+// ─── Team editor ──────────────────────────────────────────────
+function openTeamEditor(){ document.getElementById('teamModal').classList.add('open') }
+function closeTeamEditor(){ document.getElementById('teamModal').classList.remove('open') }
+let t1Valid = true, t2Valid = true;
+
+async function previewTeam(player){
+  let ta = document.getElementById(player+'paste');
+  let prev = document.getElementById(player+'preview');
+  let paste = ta.value.trim();
+  if (!paste){ prev.textContent=''; prev.className='modal-preview';
+    if(player==='t1')t1Valid=true;else t2Valid=true; updateApplyBtn(); return; }
+  try {
+    let r = await fetch('/api/parse_team', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({paste, player})});
+    let d = await r.json();
+    if (d.error){ prev.textContent='✗ '+d.error; prev.className='modal-preview err';
+      if(player==='t1')t1Valid=false;else t2Valid=false; }
+    else {
+      let names = d.team.map(m=>m.species).join(', ');
+      let w = d.warnings.length ? ` (${d.warnings.length} warning${d.warnings.length>1?'s':''})` : '';
+      prev.textContent='✓ '+names+w;
+      prev.className = d.warnings.length ? 'modal-preview warn' : 'modal-preview ok';
+      if(player==='t1')t1Valid=true;else t2Valid=true;
+    }
+  } catch(e){ prev.textContent='Error: '+e.message; prev.className='modal-preview err'; }
+  updateApplyBtn();
+}
+function updateApplyBtn(){ document.getElementById('applyTeamBtn').disabled=!(t1Valid&&t2Valid) }
+document.getElementById('t1paste').addEventListener('input', ()=>previewTeam('t1'));
+document.getElementById('t2paste').addEventListener('input', ()=>previewTeam('t2'));
+
+async function applyTeams(){
+  let p1 = document.getElementById('t1paste').value.trim();
+  let p2 = document.getElementById('t2paste').value.trim();
+  let body = {}; if(p1)body.p1=p1; if(p2)body.p2=p2;
+  if (!Object.keys(body).length){ closeTeamEditor(); return; }
+  try {
+    let r = await fetch('/api/set_teams', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    let d = await r.json();
+    if (d.error){
+      if(d.error.p1) document.getElementById('t1preview').textContent='✗ '+d.error.p1;
+      if(d.error.p2) document.getElementById('t2preview').textContent='✗ '+d.error.p2;
+      return;
+    }
+    closeTeamEditor();
+    clearInterval(poll); selP1=null; selP2=null; showingOutcomes=false;
+    poll=setInterval(fetchState,500); fetchState();
+  } catch(e){ alert('Error: '+e.message) }
+}
+
+// ─── State editor ─────────────────────────────────────────────
+function openStateEditor(){
+  if (!curState) return;
+  // Populate from current state
+  let weather = curState.weather || '';
+  document.getElementById('se-weather').value = weather;
+
+  ['p1','p2'].forEach(player => {
+    let team = curState[player];
+    let col = document.getElementById('se-'+player);
+    col.innerHTML = team.map((m, i) => {
+      let activeTag = m.isActive ? '<span class="se-active-tag">ACTIVE</span>' : '';
+      return `<div class="se-mon" data-player="${player}" data-idx="${i}">
+        <div class="se-mon-name">${m.species} ${activeTag}</div>
+        <div class="se-row">
+          <label>HP</label>
+          <input type="range" min="0" max="${m.maxHp}" value="${m.hp}" oninput="this.nextElementSibling.textContent=this.value+'/'+${m.maxHp}">
+          <span class="hp-val">${m.hp}/${m.maxHp}</span>
+        </div>
+        <div class="se-row">
+          <label>Status</label>
+          <select>
+            <option value="" ${!m.status?'selected':''}>None</option>
+            <option value="burn" ${m.status==='burn'?'selected':''}>Burn</option>
+            <option value="paralyze" ${m.status==='paralyze'?'selected':''}>Paralyze</option>
+            <option value="poison" ${m.status==='poison'?'selected':''}>Poison</option>
+            <option value="toxic" ${m.status==='toxic'?'selected':''}>Toxic</option>
+            <option value="freeze" ${m.status==='freeze'?'selected':''}>Freeze</option>
+            <option value="sleep" ${m.status==='sleep'?'selected':''}>Sleep</option>
+          </select>
+        </div>
+        ${m.isActive ? `<div class="se-row" style="flex-wrap:wrap;gap:4px">
+          <label style="width:100%;margin-bottom:2px">Stages</label>
+          <div class="se-stages">
+            ${['atk','def','spa','spd','spe'].map(st => `
+              <div class="se-stage">
+                <label>${st.toUpperCase()}</label>
+                <input type="number" min="-6" max="6" value="${m[st+'Stage']||0}">
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+  });
+
+  document.getElementById('stateModal').classList.add('open');
+}
+function closeStateEditor(){ document.getElementById('stateModal').classList.remove('open') }
+
+async function applyStateEdit(){
+  let weather = document.getElementById('se-weather').value;
+  let body = { weather };
+
+  ['p1','p2'].forEach(player => {
+    let cards = document.querySelectorAll(`#se-${player} .se-mon`);
+    body[player] = Array.from(cards).map(card => {
+      let hp = card.querySelector('input[type=range]')?.value;
+      let status = card.querySelector('select')?.value;
+      let stageInputs = card.querySelectorAll('.se-stage input');
+      let stages = {};
+      stageInputs.forEach((inp, i) => {
+        let key = ['atk','def','spa','spd','spe'][i];
+        stages[key] = parseInt(inp.value) || 0;
+      });
+      let ed = {};
+      if (hp !== undefined) ed.hp = parseInt(hp);
+      if (status !== undefined) ed.status = status || null;
+      if (stageInputs.length > 0) ed.stages = stages;
+      return ed;
+    });
+  });
+
+  await fetch('/api/edit_state', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+
+  closeStateEditor();
+  clearInterval(poll);
+  poll = setInterval(fetchState, 500);
+  fetchState();
+}
+
+// ─── Quick HP/status edit ─────────────────────────────────────
+function openQuickEdit(player, monIdx, maxHp, name){
+  if (!curState) return;
+  let mon = curState[player][monIdx];
+  qeditTarget = {player, monIdx, maxHp};
+
+  let el = document.getElementById('qedit');
+  let bg = document.getElementById('qeditBg');
+
+  document.getElementById('qedit-label').textContent = `${name} — HP (max ${maxHp})`;
+  document.getElementById('qedit-hp').max = maxHp;
+  document.getElementById('qedit-hp').value = mon.hp;
+  document.getElementById('qedit-status').value = mon.status || '';
+
+  bg.classList.add('open');
+  document.getElementById('qedit-hp').select();
+}
+function closeQuickEdit(){
+  document.getElementById('qeditBg').classList.remove('open');
+  qeditTarget = null;
+}
+async function applyQuickEdit(){
+  if (!qeditTarget) return;
+  let hp = parseInt(document.getElementById('qedit-hp').value);
+  let status = document.getElementById('qedit-status').value || null;
+  let {player, monIdx} = qeditTarget;
+
+  let body = {[player]: Array(curState[player].length).fill({})};
+  body[player][monIdx] = {hp, status};
+
+  await fetch('/api/edit_state', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+
+  closeQuickEdit();
+  clearInterval(poll);
+  poll = setInterval(fetchState, 500);
+  fetchState();
+}
+
+document.getElementById('qedit-hp').addEventListener('keydown', e => {
+  if (e.key === 'Enter') applyQuickEdit();
+  if (e.key === 'Escape') closeQuickEdit();
+});
+
+// ─── Tab switching ────────────────────────────────────────────
+function switchTab(tab){
+  document.getElementById('tab-paste-panel').style.display = tab==='paste' ? '' : 'none';
+  document.getElementById('tab-bf-panel').style.display   = tab==='bf'    ? '' : 'none';
+  document.getElementById('tab-paste').classList.toggle('active', tab==='paste');
+  document.getElementById('tab-bf').classList.toggle('active', tab==='bf');
+  if (tab === 'bf' && !bfAllSets) loadBfSets();
+}
+
+// ─── BF sets browser ──────────────────────────────────────────
+let bfAllSets = null;
+let bfLoadedSlots = {};   // {p1_0: setObj, p1_1: ..., p2_0: ..., ...}
+
+async function loadBfSets(){
+  let r = await fetch('/api/bf_sets?playable=1');
+  let d = await r.json();
+  bfAllSets = d.sets;
+  bfSearch();
+}
+
+function bfSearch(){
+  if (!bfAllSets) return;
+  let q = document.getElementById('bf-search').value.trim().toLowerCase();
+  let grp = document.getElementById('bf-group').value;
+  let playableOnly = document.getElementById('bf-playable').checked;
+
+  let results = bfAllSets.filter(s => {
+    if (playableOnly && !s.playable) return false;
+    if (grp && s.group !== grp) return false;
+    if (q && !s.species.toLowerCase().includes(q) &&
+             !s.moves.some(m => m.toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  document.getElementById('bf-count').textContent = `${results.length} sets`;
+  let el = document.getElementById('bf-results');
+  if (!results.length){
+    el.innerHTML = '<div style="color:var(--dm);font-size:12px;grid-column:1/-1">No sets found</div>';
+    return;
+  }
+
+  el.innerHTML = results.slice(0, 120).map((s, i) => {
+    let evStr = Object.entries(s.evs).map(([k,v])=>v+' '+k.toUpperCase()).join(' / ');
+    let slot = bfGetLoadedSlot(s);
+    let lbl = slot ? `<span class="bf-slot-lbl">${slot}</span>` : '';
+    return `<div class="bf-card${slot?' loaded':''}" data-idx="${i}" onclick="bfLoadSet(${JSON.stringify(JSON.stringify(s))})">
+      <div class="bf-name">${s.species} ${lbl}<span style="font-size:10px;color:var(--dm)">${s.group}</span></div>
+      <div class="bf-meta">${s.nature} · ${s.item} · ${evStr}</div>
+      <div class="bf-moves">${s.moves.join(' / ')}</div>
+    </div>`;
+  }).join('');
+  if (results.length > 120)
+    el.innerHTML += `<div style="color:var(--dm);font-size:11px;grid-column:1/-1;text-align:center">Showing 120 of ${results.length} — refine the search</div>`;
+}
+
+function bfGetLoadedSlot(s){
+  for (let [k, loaded] of Object.entries(bfLoadedSlots)){
+    if (loaded && loaded.species === s.species && JSON.stringify(loaded.moves) === JSON.stringify(s.moves))
+      return k.replace('_', ' ').replace('p1','P1').replace('p2','P2');
+  }
+  return null;
+}
+
+function bfLoadSet(sJson){
+  let s = JSON.parse(sJson);
+  let slot = document.getElementById('bf-slot').value;
+  bfLoadedSlots[slot] = s;
+  bfRenderSlots();
+  bfSearch();  // refresh cards to show loaded badge
+}
+
+function bfRenderSlots(){
+  let el = document.getElementById('bf-slots-preview');
+  let slots = ['p1_0','p1_1','p1_2','p2_0','p2_1','p2_2'];
+  let labels = ['P1 Slot 1','P1 Slot 2','P1 Slot 3','P2 Slot 1','P2 Slot 2','P2 Slot 3'];
+  el.innerHTML = slots.map((k, i) => {
+    let s = bfLoadedSlots[k];
+    if (!s) return `<div class="slot-card"><span style="font-size:9px;color:var(--dm)">${labels[i]}</span><br><span class="slot-empty">empty</span></div>`;
+    return `<div class="slot-card">
+      <span style="font-size:9px;color:var(--dm)">${labels[i]}</span>
+      <button onclick="bfClearSlot('${k}')" style="float:right;background:transparent;border:none;color:var(--dm);cursor:pointer;font-size:11px">✕</button>
+      <br><b>${s.species}</b> <span style="color:var(--dm);font-size:10px">${s.nature}</span>
+      <div style="font-size:10px;color:var(--dm)">${s.moves.join(' / ')}</div>
+    </div>`;
+  }).join('');
+}
+
+function bfClearSlot(k){ delete bfLoadedSlots[k]; bfRenderSlots(); bfSearch(); }
+
+function bfSetToShowdown(s){
+  let evParts = Object.entries(s.evs).map(([k,v]) => {
+    let label = {hp:'HP',atk:'Atk',def:'Def',spa:'SpA',spd:'SpD',spe:'Spe'}[k];
+    return `${v} ${label}`;
+  });
+  let lines = [
+    `${s.species} @ ${s.item}`,
+    `Ability: ${s.ability}`,
+    `EVs: ${evParts.join(' / ')}`,
+    `${s.nature} Nature`,
+    ...s.moves.map(m => `- ${m}`)
+  ];
+  return lines.join('\n');
+}
+
+async function applyBfSets(){
+  // Build pastes for each player from their 3 slots
+  let p1Sets = ['p1_0','p1_1','p1_2'].map(k => bfLoadedSlots[k]).filter(Boolean);
+  let p2Sets = ['p2_0','p2_1','p2_2'].map(k => bfLoadedSlots[k]).filter(Boolean);
+
+  if (!p1Sets.length && !p2Sets.length){
+    closeTeamEditor(); return;
+  }
+  if (p1Sets.length > 0 && p1Sets.length !== 3){
+    alert(`P1 needs exactly 3 Pokémon (currently ${p1Sets.length})`); return;
+  }
+  if (p2Sets.length > 0 && p2Sets.length !== 3){
+    alert(`P2 needs exactly 3 Pokémon (currently ${p2Sets.length})`); return;
+  }
+
+  let body = {};
+  if (p1Sets.length === 3) body.p1 = p1Sets.map(bfSetToShowdown).join('\n\n');
+  if (p2Sets.length === 3) body.p2 = p2Sets.map(bfSetToShowdown).join('\n\n');
+
+  try {
+    let r = await fetch('/api/set_teams', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    let d = await r.json();
+    if (d.error){
+      alert('Error: ' + JSON.stringify(d.error)); return;
+    }
+    bfLoadedSlots = {};
+    closeTeamEditor();
+    clearInterval(poll); selP1=null; selP2=null; showingOutcomes=false;
+    poll=setInterval(fetchState,500); fetchState();
+  } catch(e){ alert('Error: '+e.message) }
+}
+
+// ─── Boot ─────────────────────────────────────────────────────
+poll = setInterval(fetchState, 500);
+fetchState();
 </script>
 </body>
 </html>

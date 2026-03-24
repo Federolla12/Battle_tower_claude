@@ -32,11 +32,20 @@ FREEZE_THAW = 0.20
 # ============================================================
 
 def _make_attacker(mon: Pokemon) -> Attacker:
+    atk = mon.base_atk
+    status = mon.status
+    # Guts: +50% Atk when statused, and prevents burn from halving Atk
+    if mon.ability == "Guts" and mon.status is not None:
+        atk = int(atk * 1.5)
+        status = None  # prevent burn-halving inside calc_damage
+    # Hustle: +50% Atk (physical moves)
+    if mon.ability == "Hustle":
+        atk = int(atk * 1.5)
     return Attacker(
         name=mon.species, level=50,
-        attack=mon.base_atk, sp_attack=mon.base_spa,
+        attack=atk, sp_attack=mon.base_spa,
         types=mon.types, ability=mon.ability, item=mon.item,
-        status=mon.status, atk_stage=mon.atk_stage, spa_stage=mon.spa_stage,
+        status=status, atk_stage=mon.atk_stage, spa_stage=mon.spa_stage,
     )
 
 def _make_defender(mon: Pokemon, field: FieldSide) -> Defender:
@@ -83,6 +92,18 @@ def apply_damage_rolls(state: BattleState, player: str,
     if all(r == 0 for r in rolls):
         # Immune — move fails
         return [(1.0, state)]
+
+    # Ability-based type immunities with healing effect
+    if move.type == "Electric" and defender.ability == "Volt Absorb":
+        heal = max(1, defender.max_hp // 4)
+        new_hp = min(defender.max_hp, defender.current_hp + heal)
+        new_def = replace(defender, current_hp=new_hp)
+        return [(1.0, state.set_active(target_player, new_def))]
+    if move.type == "Water" and defender.ability == "Water Absorb":
+        heal = max(1, defender.max_hp // 4)
+        new_hp = min(defender.max_hp, defender.current_hp + heal)
+        new_def = replace(defender, current_hp=new_hp)
+        return [(1.0, state.set_active(target_player, new_def))]
 
     # Does the defender have a Substitute?
     if defender.substitute_hp > 0 and move.base_power > 0:
@@ -166,8 +187,19 @@ def _track_damage(state, target_player, damage, move):
 
 
 def _apply_recoil_drain(state, player, damage_dealt, move):
-    """Apply recoil or drain to the attacker."""
+    """Apply recoil or drain to the attacker. Also handles Shell Bell."""
+    attacker = state.active(player)
+    # Shell Bell: heal 1/8 of damage dealt (not consumed)
+    if move.base_power > 0 and attacker.item == "Shell Bell" and damage_dealt > 0:
+        heal = max(1, damage_dealt // 8)
+        new_hp = min(attacker.max_hp, attacker.current_hp + heal)
+        attacker = replace(attacker, current_hp=new_hp)
+        state = state.set_active(player, attacker)
+
     if move.recoil == 0:
+        return state
+    # Rock Head: no recoil from recoil moves
+    if attacker.ability == "Rock Head" and move.recoil > 0:
         return state
     attacker = state.active(player)
     if move.recoil > 0:
@@ -207,11 +239,18 @@ def apply_secondary_effect(state: BattleState, player: str,
     if not target.alive():
         return [(1.0, state)]
 
-    # Don't apply effects through Substitute
-    if target.substitute_hp > 0:
+    # Don't apply effects through Substitute (self-targeting effects bypass this)
+    self_targeting = move.effect in (
+        "atk_plus1_self", "all_stats_plus1_self",
+        "spa_minus2_self", "atk_def_minus1_self", "def_plus1_self",
+    )
+    if target.substitute_hp > 0 and not self_targeting:
         return [(1.0, state)]
 
     chance = move.effect_chance / 100
+    # Serene Grace doubles secondary effect chance
+    if state.active(player).ability == "Serene Grace":
+        chance = min(1.0, chance * 2)
     eff = move.effect
 
     if eff == "burn":
@@ -273,6 +312,92 @@ def apply_secondary_effect(state: BattleState, player: str,
             return [(1.0, state)]
         new_a = replace(attacker, atk_stage=new_stage)
         s_eff = state.set_active(player, new_a)
+        return [(chance, s_eff), (1 - chance, state)]
+
+    elif eff == "def_minus1":
+        if target.ability in ("Clear Body", "White Smoke"):
+            return [(1.0, state)]
+        new_stage = max(-6, target.def_stage - 1)
+        if new_stage == target.def_stage:
+            return [(1.0, state)]
+        new_t = replace(target, def_stage=new_stage)
+        s_eff = state.set_active(target_player, new_t)
+        return [(chance, s_eff), (1 - chance, state)]
+
+    elif eff == "spe_minus1":
+        if target.ability in ("Clear Body", "White Smoke"):
+            return [(1.0, state)]
+        new_stage = max(-6, target.spe_stage - 1)
+        if new_stage == target.spe_stage:
+            return [(1.0, state)]
+        new_t = replace(target, spe_stage=new_stage)
+        s_eff = state.set_active(target_player, new_t)
+        return [(chance, s_eff), (1 - chance, state)]
+
+    elif eff == "confuse":
+        # Secondary confusion (Dragon Breath 30%, Dynamic Punch 100%, etc.)
+        if target.confused:
+            return [(1.0, state)]
+        # Branch on random duration 2-5 turns
+        results = []
+        p_hit_each = chance / 4
+        for turns in [2, 3, 4, 5]:
+            new_t = replace(target, confused=True, confused_turns=turns)
+            s_eff = state.set_active(target_player, new_t)
+            results.append((p_hit_each, s_eff))
+        results.append((1 - chance, state))
+        return results
+
+    elif eff == "all_stats_plus1_self":
+        # Ancient Power / Silver Wind: +1 to all 5 stats (chance)
+        attacker = state.active(player)
+        new_a = replace(attacker,
+                        atk_stage=min(6, attacker.atk_stage + 1),
+                        def_stage=min(6, attacker.def_stage + 1),
+                        spa_stage=min(6, attacker.spa_stage + 1),
+                        spd_stage=min(6, attacker.spd_stage + 1),
+                        spe_stage=min(6, attacker.spe_stage + 1))
+        s_eff = state.set_active(player, new_a)
+        return [(chance, s_eff), (1 - chance, state)]
+
+    elif eff == "spa_minus2_self":
+        # Overheat: -2 SpA to user after attack
+        attacker = state.active(player)
+        new_stage = max(-6, attacker.spa_stage - 2)
+        if new_stage == attacker.spa_stage:
+            return [(1.0, state)]
+        new_a = replace(attacker, spa_stage=new_stage)
+        s_eff = state.set_active(player, new_a)
+        return [(chance, s_eff), (1 - chance, state)]
+
+    elif eff == "atk_def_minus1_self":
+        # Superpower: -1 Atk, -1 Def to user after attack
+        attacker = state.active(player)
+        new_a = replace(attacker,
+                        atk_stage=max(-6, attacker.atk_stage - 1),
+                        def_stage=max(-6, attacker.def_stage - 1))
+        s_eff = state.set_active(player, new_a)
+        return [(chance, s_eff), (1 - chance, state)]
+
+    elif eff == "def_plus1_self":
+        # Steel Wing: +1 Def to user (10%)
+        attacker = state.active(player)
+        new_stage = min(6, attacker.def_stage + 1)
+        if new_stage == attacker.def_stage:
+            return [(1.0, state)]
+        new_a = replace(attacker, def_stage=new_stage)
+        s_eff = state.set_active(player, new_a)
+        return [(chance, s_eff), (1 - chance, state)]
+
+    elif eff == "spa_minus1":
+        # Mist Ball: -1 SpA to target
+        if target.ability in ("Clear Body", "White Smoke"):
+            return [(1.0, state)]
+        new_stage = max(-6, target.spa_stage - 1)
+        if new_stage == target.spa_stage:
+            return [(1.0, state)]
+        new_t = replace(target, spa_stage=new_stage)
+        s_eff = state.set_active(target_player, new_t)
         return [(chance, s_eff), (1 - chance, state)]
 
     return [(1.0, state)]
@@ -416,6 +541,376 @@ def execute_status_move(state: BattleState, player: str,
         # The "fails if hit" check is done by the turn resolver.
         pass
 
+    # --- Stat boost/drop moves ---
+
+    elif eff == "atk_plus2_self":
+        # Swords Dance
+        new_stage = min(6, attacker.atk_stage + 2)
+        if new_stage == attacker.atk_stage:
+            return [(1.0, state)]
+        new_a = replace(attacker, atk_stage=new_stage)
+        return [(1.0, state.set_active(player, new_a))]
+
+    elif eff == "atk_spe_plus1_self":
+        # Dragon Dance
+        new_a = replace(attacker,
+                        atk_stage=min(6, attacker.atk_stage + 1),
+                        spe_stage=min(6, attacker.spe_stage + 1))
+        return [(1.0, state.set_active(player, new_a))]
+
+    elif eff == "spa_spd_plus1_self":
+        # Calm Mind
+        new_a = replace(attacker,
+                        spa_stage=min(6, attacker.spa_stage + 1),
+                        spd_stage=min(6, attacker.spd_stage + 1))
+        return [(1.0, state.set_active(player, new_a))]
+
+    elif eff == "spe_plus2_self":
+        # Agility
+        new_stage = min(6, attacker.spe_stage + 2)
+        if new_stage == attacker.spe_stage:
+            return [(1.0, state)]
+        new_a = replace(attacker, spe_stage=new_stage)
+        return [(1.0, state.set_active(player, new_a))]
+
+    elif eff == "spd_plus2_self":
+        # Amnesia
+        new_stage = min(6, attacker.spd_stage + 2)
+        if new_stage == attacker.spd_stage:
+            return [(1.0, state)]
+        new_a = replace(attacker, spd_stage=new_stage)
+        return [(1.0, state.set_active(player, new_a))]
+
+    # --- Recovery moves ---
+
+    elif eff == "recover_half":
+        # Recover / Softboiled / Moonlight (weather modifier ignored)
+        new_hp = min(attacker.max_hp,
+                     attacker.current_hp + max(1, attacker.max_hp // 2))
+        if new_hp == attacker.current_hp:
+            return [(1.0, state)]
+        new_a = replace(attacker, current_hp=new_hp)
+        return [(1.0, state.set_active(player, new_a))]
+
+    # --- Sleep-inflicting moves ---
+
+    elif eff == "sleep_status":
+        # Spore / Hypnosis (accuracy checked by caller)
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if target.status is not None:
+            return [(1.0, state)]
+        # Sleep Clause: only one sleeping mon per team
+        opp_team = state.get_team(target_player)
+        if any(m.status == "sleep" for m in opp_team if m is not target):
+            return [(1.0, state)]
+        # Random duration 1-4 turns (equal probability)
+        results = []
+        for turns in [1, 2, 3, 4]:
+            new_t = replace(target, status="sleep", status_turns=turns)
+            s = state.set_active(target_player, new_t)
+            s = _check_lum_berry(s, target_player)
+            results.append((0.25, s))
+        return results
+
+    # --- Confusion-inflicting moves ---
+
+    elif eff == "confuse_status":
+        # Confuse Ray (never misses when it hits — accuracy handled by caller)
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if target.confused:
+            return [(1.0, state)]
+        # Random duration 2-5 turns
+        results = []
+        for turns in [2, 3, 4, 5]:
+            new_t = replace(target, confused=True, confused_turns=turns)
+            s = state.set_active(target_player, new_t)
+            results.append((0.25, s))
+        return results
+
+    # --- Fixed-damage moves ---
+
+    elif eff == "seismic_toss":
+        # Normal-type: Ghost immune
+        if "Ghost" in (target.types[0], target.types[1]):
+            return [(1.0, state)]
+        dmg = 50  # level 50
+        if target.substitute_hp > 0:
+            new_sub = max(0, target.substitute_hp - dmg)
+            new_t = replace(target, substitute_hp=new_sub,
+                            last_damage_taken=0, last_damage_physical=False)
+        else:
+            new_hp = max(0, target.current_hp - dmg)
+            new_t = replace(target, current_hp=new_hp,
+                            last_damage_taken=dmg, last_damage_physical=True)
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    elif eff == "night_shade":
+        # Ghost-type: Normal immune
+        if "Normal" in (target.types[0], target.types[1]):
+            return [(1.0, state)]
+        dmg = 50  # level 50
+        if target.substitute_hp > 0:
+            new_sub = max(0, target.substitute_hp - dmg)
+            new_t = replace(target, substitute_hp=new_sub,
+                            last_damage_taken=0, last_damage_physical=False)
+        else:
+            new_hp = max(0, target.current_hp - dmg)
+            new_t = replace(target, current_hp=new_hp,
+                            last_damage_taken=0, last_damage_physical=False)
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    # --- Entry hazards ---
+
+    elif eff == "lay_spikes":
+        field = state.field_p1 if target_player == "p1" else state.field_p2
+        if field.spikes >= 3:
+            return [(1.0, state)]  # Max layers
+        new_field = replace(field, spikes=field.spikes + 1)
+        return [(1.0, state.set_field(target_player, new_field))]
+
+    # --- Setup moves ---
+
+    elif eff == "atk_def_plus1_self":
+        # Bulk Up
+        new_a = replace(attacker,
+                        atk_stage=min(6, attacker.atk_stage + 1),
+                        def_stage=min(6, attacker.def_stage + 1))
+        return [(1.0, state.set_active(player, new_a))]
+
+    elif eff == "def_spd_plus1_self":
+        # Cosmic Power
+        new_a = replace(attacker,
+                        def_stage=min(6, attacker.def_stage + 1),
+                        spd_stage=min(6, attacker.spd_stage + 1))
+        return [(1.0, state.set_active(player, new_a))]
+
+    elif eff == "def_plus2_self":
+        # Acid Armor
+        new_stage = min(6, attacker.def_stage + 2)
+        if new_stage == attacker.def_stage:
+            return [(1.0, state)]
+        new_a = replace(attacker, def_stage=new_stage)
+        return [(1.0, state.set_active(player, new_a))]
+
+    elif eff == "belly_drum":
+        cost = attacker.max_hp // 2
+        if attacker.current_hp <= cost or attacker.atk_stage >= 6:
+            return [(1.0, state)]
+        new_a = replace(attacker, current_hp=attacker.current_hp - cost, atk_stage=6)
+        return [(1.0, state.set_active(player, new_a))]
+
+    elif eff == "spa_plus3_self":
+        # Tail Glow (Gen 3: +3 SpA)
+        new_stage = min(6, attacker.spa_stage + 3)
+        if new_stage == attacker.spa_stage:
+            return [(1.0, state)]
+        new_a = replace(attacker, spa_stage=new_stage)
+        return [(1.0, state.set_active(player, new_a))]
+
+    elif eff == "atk_plus1_self_status":
+        # Howl / Meditate
+        new_stage = min(6, attacker.atk_stage + 1)
+        if new_stage == attacker.atk_stage:
+            return [(1.0, state)]
+        new_a = replace(attacker, atk_stage=new_stage)
+        return [(1.0, state.set_active(player, new_a))]
+
+    # --- Weather moves ---
+
+    elif eff == "rain_dance":
+        s = replace(state, weather="rain", weather_turns=5)
+        return [(1.0, s)]
+
+    elif eff == "sunny_day":
+        s = replace(state, weather="sun", weather_turns=5)
+        return [(1.0, s)]
+
+    elif eff == "hail":
+        s = replace(state, weather="hail", weather_turns=5)
+        return [(1.0, s)]
+
+    elif eff == "sandstorm_move":
+        s = replace(state, weather="sand", weather_turns=5)
+        return [(1.0, s)]
+
+    # --- Opponent stat drops ---
+
+    elif eff == "def_minus2_opp":
+        # Screech
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if target.ability in ("Clear Body", "White Smoke"):
+            return [(1.0, state)]
+        new_stage = max(-6, target.def_stage - 2)
+        if new_stage == target.def_stage:
+            return [(1.0, state)]
+        new_t = replace(target, def_stage=new_stage)
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    elif eff == "spe_minus2_opp":
+        # Scary Face / Cotton Spore
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if target.ability in ("Clear Body", "White Smoke"):
+            return [(1.0, state)]
+        new_stage = max(-6, target.spe_stage - 2)
+        if new_stage == target.spe_stage:
+            return [(1.0, state)]
+        new_t = replace(target, spe_stage=new_stage)
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    elif eff == "spd_minus2_opp":
+        # Metal Sound
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if target.ability in ("Clear Body", "White Smoke"):
+            return [(1.0, state)]
+        new_stage = max(-6, target.spd_stage - 2)
+        if new_stage == target.spd_stage:
+            return [(1.0, state)]
+        new_t = replace(target, spd_stage=new_stage)
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    elif eff == "def_minus1_opp":
+        # Leer / Tail Whip
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if target.ability in ("Clear Body", "White Smoke"):
+            return [(1.0, state)]
+        new_stage = max(-6, target.def_stage - 1)
+        if new_stage == target.def_stage:
+            return [(1.0, state)]
+        new_t = replace(target, def_stage=new_stage)
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    elif eff == "atk_minus1_opp":
+        # Growl
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if target.ability in ("Clear Body", "White Smoke", "Hyper Cutter"):
+            return [(1.0, state)]
+        new_stage = max(-6, target.atk_stage - 1)
+        if new_stage == target.atk_stage:
+            return [(1.0, state)]
+        new_t = replace(target, atk_stage=new_stage)
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    elif eff == "atk_minus2_opp":
+        # Charm
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if target.ability in ("Clear Body", "White Smoke", "Hyper Cutter"):
+            return [(1.0, state)]
+        new_stage = max(-6, target.atk_stage - 2)
+        if new_stage == target.atk_stage:
+            return [(1.0, state)]
+        new_t = replace(target, atk_stage=new_stage)
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    elif eff == "atk_def_minus1_opp":
+        # Tickle
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if target.ability in ("Clear Body", "White Smoke"):
+            return [(1.0, state)]
+        new_t = replace(target,
+                        atk_stage=max(-6, target.atk_stage - 1),
+                        def_stage=max(-6, target.def_stage - 1))
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    # --- Swagger / Flatter ---
+
+    elif eff == "swagger":
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        new_atk = min(6, target.atk_stage + 2)
+        new_t_atk = replace(target, atk_stage=new_atk)
+        s = state.set_active(target_player, new_t_atk)
+        if s.active(target_player).confused:
+            return [(1.0, s)]
+        results = []
+        for turns in [2, 3, 4, 5]:
+            new_t2 = replace(s.active(target_player), confused=True, confused_turns=turns)
+            results.append((0.25, s.set_active(target_player, new_t2)))
+        return results
+
+    # --- Roar / Whirlwind (force switch) ---
+
+    elif eff == "roar":
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        opp_team = list(state.get_team(target_player))
+        opp_active_idx = state.get_active_idx(target_player)
+        alternatives = [i for i, m in enumerate(opp_team)
+                        if i != opp_active_idx and m.alive()]
+        if not alternatives:
+            return [(1.0, state)]
+        # Branch equally over each possible switch-in
+        p = 1.0 / len(alternatives)
+        results = []
+        for idx in alternatives:
+            # Directly update active index (no entry effects for Roar-forced switch)
+            if target_player == "p1":
+                new_s = replace(state, active_p1=idx)
+            else:
+                new_s = replace(state, active_p2=idx)
+            results.append((p, new_s))
+        return results
+
+    # --- Haze (clear all stat stages) ---
+
+    elif eff == "haze":
+        act_p = state.active(player)
+        act_t = state.active(target_player)
+        new_a = replace(act_p, atk_stage=0, def_stage=0, spa_stage=0,
+                        spd_stage=0, spe_stage=0)
+        new_t = replace(act_t, atk_stage=0, def_stage=0, spa_stage=0,
+                        spd_stage=0, spe_stage=0)
+        s = state.set_active(player, new_a)
+        s = s.set_active(target_player, new_t)
+        return [(1.0, s)]
+
+    # --- Psych Up (copy opponent's stages) ---
+
+    elif eff == "psych_up":
+        opp = state.active(target_player)
+        new_a = replace(attacker,
+                        atk_stage=opp.atk_stage, def_stage=opp.def_stage,
+                        spa_stage=opp.spa_stage, spd_stage=opp.spd_stage,
+                        spe_stage=opp.spe_stage)
+        return [(1.0, state.set_active(player, new_a))]
+
+    # --- OHKO ---
+
+    elif eff == "ohko":
+        # Accuracy already applied by caller; if we reach here the move "hit"
+        if target.ability == "Sturdy":
+            return [(1.0, state)]  # Sturdy blocks OHKO
+        new_t = replace(target, current_hp=0)
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    # --- Mirror Coat ---
+
+    elif eff == "mirror_coat":
+        if attacker.last_damage_physical or attacker.last_damage_taken == 0:
+            return [(1.0, state)]
+        dmg = attacker.last_damage_taken * 2
+        if target.substitute_hp > 0:
+            new_sub = max(0, target.substitute_hp - dmg)
+            new_t = replace(target, substitute_hp=new_sub)
+        else:
+            new_hp = max(0, target.current_hp - dmg)
+            new_t = replace(target, current_hp=new_hp)
+        return [(1.0, state.set_active(target_player, new_t))]
+
+    # --- Stubs (no-op — complex mechanics not fully modelled) ---
+    # reflect, light_screen, safeguard, attract, protect, endure, baton_pass,
+    # destiny_bond, skill_swap, trick, memento, encore, disable, perish_song,
+    # trap, follow_me, metronome, role_play, recycle, grudge, spite, torment,
+    # imprison, leech_seed, evasion_plus1, acc_minus1
+
     return [(1.0, state)]
 
 
@@ -461,8 +956,11 @@ def execute_single_move(state: BattleState, player: str,
     # --- Damaging move ---
     # Accuracy check
     acc = move.accuracy
-    if acc > 0 and acc < 100:
+    if acc > 0:  # acc == 0 means never miss
         hit_prob = acc / 100
+        # Hustle lowers physical move accuracy by 20%
+        if (attacker.ability == "Hustle" and move.category == "physical"):
+            hit_prob = max(0.0, hit_prob * 0.8)
     else:
         hit_prob = 1.0
 
@@ -579,6 +1077,33 @@ def apply_end_of_turn(state: BattleState) -> BattleState:
         elif mon.flinched or mon.last_damage_taken > 0:
             new_mon = replace(mon, flinched=False, last_damage_taken=0,
                               last_damage_physical=False)
+            state = state.set_active(player, new_mon)
+
+    # Pinch berries (trigger at ≤25% HP, single use)
+    for player in ["p1", "p2"]:
+        mon = state.active(player)
+        if not mon.alive() or mon.item_consumed:
+            continue
+        if mon.current_hp > mon.max_hp // 4:
+            continue
+        item = mon.item
+        new_mon = None
+        if item == "Salac Berry":
+            new_mon = replace(mon, spe_stage=min(6, mon.spe_stage + 1),
+                              item_consumed=True)
+        elif item == "Petaya Berry":
+            new_mon = replace(mon, spa_stage=min(6, mon.spa_stage + 1),
+                              item_consumed=True)
+        elif item == "Liechi Berry":
+            new_mon = replace(mon, atk_stage=min(6, mon.atk_stage + 1),
+                              item_consumed=True)
+        elif item == "Apicot Berry":
+            new_mon = replace(mon, spd_stage=min(6, mon.spd_stage + 1),
+                              item_consumed=True)
+        elif item == "Ganlon Berry":
+            new_mon = replace(mon, def_stage=min(6, mon.def_stage + 1),
+                              item_consumed=True)
+        if new_mon is not None:
             state = state.set_active(player, new_mon)
 
     # Screen countdown (batched)
