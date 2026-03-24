@@ -51,6 +51,7 @@ class Pokemon:
     last_damage_taken: int         # for Counter
     last_damage_physical: bool     # was last hit physical?
     protect_consecutive: int       # consecutive Protect uses
+    leech_seeded: bool             # seeded by opponent (clears on switch)
 
     def alive(self) -> bool:
         return self.current_hp > 0
@@ -195,6 +196,7 @@ def make_pokemon(species: str, nature: str, evs: dict,
         flinched=False, last_move=None,
         last_damage_taken=0, last_damage_physical=False,
         protect_consecutive=0,
+        leech_seeded=False,
     )
 
 

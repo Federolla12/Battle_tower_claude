@@ -741,6 +741,22 @@ def execute_status_move(state: BattleState, player: str,
         s = replace(state, weather="sand", weather_turns=5)
         return [(1.0, s)]
 
+    # --- Screens ---
+
+    elif eff == "reflect":
+        field = state.field_p1 if player == "p1" else state.field_p2
+        if field.reflect_turns > 0:
+            return [(1.0, state)]
+        new_field = replace(field, reflect_turns=5)
+        return [(1.0, state.set_field(player, new_field))]
+
+    elif eff == "light_screen":
+        field = state.field_p1 if player == "p1" else state.field_p2
+        if field.light_screen_turns > 0:
+            return [(1.0, state)]
+        new_field = replace(field, light_screen_turns=5)
+        return [(1.0, state.set_field(player, new_field))]
+
     # --- Opponent stat drops ---
 
     elif eff == "def_minus2_opp":
@@ -910,11 +926,22 @@ def execute_status_move(state: BattleState, player: str,
             new_t = replace(target, current_hp=new_hp)
         return [(1.0, state.set_active(target_player, new_t))]
 
+    # --- Leech Seed ---
+
+    elif eff == "leech_seed":
+        if target.substitute_hp > 0:
+            return [(1.0, state)]
+        if "Grass" in (target.types[0], target.types[1]):
+            return [(1.0, state)]
+        if target.leech_seeded:
+            return [(1.0, state)]
+        return [(1.0, state.set_active(target_player, replace(target, leech_seeded=True)))]
+
     # --- Stubs (no-op — complex mechanics not fully modelled) ---
-    # reflect, light_screen, safeguard, attract, protect, endure, baton_pass,
+    # safeguard, attract, protect, endure, baton_pass,
     # destiny_bond, skill_swap, trick, memento, encore, disable, perish_song,
     # trap, follow_me, metronome, role_play, recycle, grudge, spite, torment,
-    # imprison, leech_seed, evasion_plus1, acc_minus1
+    # imprison, evasion_plus1, acc_minus1
 
     return [(1.0, state)]
 
@@ -1072,6 +1099,20 @@ def apply_end_of_turn(state: BattleState) -> BattleState:
         if mon.status == "toxic":
             st_turns += 1
             hp -= max(1, mon.max_hp * st_turns // 16)
+
+        # Leech Seed
+        if mon.leech_seeded and hp > 0:
+            drain = max(1, mon.max_hp // 8)
+            drained = min(drain, hp)
+            hp -= drain
+            opp = state.opp(player)
+            opp_mon = state.active(opp)
+            if opp_mon.alive() and drained > 0:
+                healed = min(opp_mon.max_hp, opp_mon.current_hp + drained)
+                if healed != opp_mon.current_hp:
+                    state = state.set_active(
+                        opp, replace(opp_mon, current_hp=healed)
+                    )
 
         hp = max(0, min(mon.max_hp, hp))
 
