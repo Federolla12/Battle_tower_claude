@@ -64,6 +64,7 @@ def execute_switch(state: BattleState, player: str,
                       flinched=False, last_move=None,
                       last_damage_taken=0, last_damage_physical=False,
                       protect_consecutive=0,
+                      leech_seeded=False,
                       move_locked=None)  # Choice Band resets
     team[old_idx] = cleared
 

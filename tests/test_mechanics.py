@@ -72,6 +72,24 @@ def _mk_aggron():
     )
 
 
+def _mk_screener():
+    return make_pokemon(
+        "Skarmory", "Impish",
+        {"hp": 252, "def": 232, "spe": 24}, {"spa": 30, "spd": 30},
+        ["Reflect", "Light Screen", "Psychic", "Thunderbolt"],
+        None, "Keen Eye",
+    )
+
+
+def _mk_seeder():
+    return make_pokemon(
+        "Skarmory", "Impish",
+        {"hp": 252, "def": 232, "spe": 24}, {"spa": 30, "spd": 30},
+        ["Leech Seed", "Synthesis", "Razor Leaf", "Reflect"],
+        None, "Keen Eye",
+    )
+
+
 # ============================================================
 # Bug fix: hail damage missing from Python apply_end_of_turn
 # ============================================================
@@ -262,3 +280,49 @@ def test_sitrus_berry_does_not_exceed_max_hp():
 
     state2 = apply_end_of_turn(state)
     assert state2.active("p1").current_hp <= p1.max_hp, "HP must never exceed max_hp"
+
+
+def test_reflect_sets_side_field_turns():
+    """Reflect should set reflect_turns=5 on the user's side."""
+    screener = _mk_screener()
+    skarm = _mk_skarmory()
+    state = make_battle([screener, skarm, skarm], [skarm, skarm, skarm])
+    outcomes = execute_player_action(state, "p1", ("move", "Reflect"))
+    assert outcomes, "expected at least one outcome"
+    assert all(s.field_p1.reflect_turns == 5 for _, s in outcomes)
+
+
+def test_light_screen_sets_side_field_turns():
+    """Light Screen should set light_screen_turns=5 on the user's side."""
+    screener = _mk_screener()
+    skarm = _mk_skarmory()
+    state = make_battle([screener, skarm, skarm], [skarm, skarm, skarm])
+    outcomes = execute_player_action(state, "p1", ("move", "Light Screen"))
+    assert outcomes, "expected at least one outcome"
+    assert all(s.field_p1.light_screen_turns == 5 for _, s in outcomes)
+
+
+def test_leech_seed_drains_seeded_target_and_heals_opponent():
+    """Leech Seed should drain 1/8 max HP at EOT and heal opposing active by same amount."""
+    seeder = _mk_seeder()
+    target = _mk_aggron()
+    skarm = _mk_skarmory()
+    state = make_battle([seeder, skarm, skarm], [target, skarm, skarm])
+    # Lower seeder HP so we can observe healing.
+    p1 = state.active("p1")
+    state = state.set_active("p1", replace(p1, current_hp=p1.max_hp // 2))
+
+    outcomes = execute_player_action(state, "p1", ("move", "Leech Seed"))
+    assert outcomes, "expected outcome from Leech Seed"
+    seeded_state = next((s for _, s in outcomes if s.active("p2").leech_seeded), None)
+    assert seeded_state is not None, "expected at least one hit branch that applies Leech Seed"
+
+    p1_before = seeded_state.active("p1").current_hp
+    p2_before = seeded_state.active("p2").current_hp
+    post = apply_end_of_turn(seeded_state)
+    p1_after = post.active("p1").current_hp
+    p2_after = post.active("p2").current_hp
+
+    expected = max(1, seeded_state.active("p2").max_hp // 8)
+    assert p2_before - p2_after == expected
+    assert p1_after - p1_before == expected
