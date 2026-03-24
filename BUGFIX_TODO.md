@@ -4,26 +4,26 @@ This file tracks the highest-priority bugs, mechanics mismatches, and follow-up 
 
 ## Priority 0 — correctness bugs affecting engine output
 
-- [ ] Fix **speed tie handling** in `gen3/turn.py`
+- [x] Fix **speed tie handling** in `gen3/turn.py`
   - Current behavior always gives equal-speed ties to P1.
   - This biases evaluations and breaks symmetry.
   - Required fix:
     - exact search: branch tie order with 50/50 probability
     - MC rollout: sample tie order randomly
 
-- [ ] Fix **double-KO forced switch evaluation** in `gen3/search.py`
+- [x] Fix **double-KO forced switch evaluation** in `gen3/search.py`
   - Current behavior averages all P1/P2 switch combinations when both active mons faint and both players still have bench Pokémon.
   - This should be treated as a simultaneous adversarial choice, not a random average.
   - Required fix:
     - build a switch matrix for `(switch_p1, switch_p2)`
     - solve using the same maximin/minimax logic used for move selection
 
-- [ ] Fix **Taunt through Substitute** in `gen3/executor.py`
+- [x] Fix **Taunt through Substitute** in `gen3/executor.py`
   - Current code blocks `Taunt` if the target has a Substitute.
   - Inline comment already notes this is wrong.
   - Update the mechanic to match intended Gen 3 behavior.
 
-- [ ] Fix **Choice Band lock application** in `gen3/turn.py`
+- [x] Fix **Choice Band lock application** in `gen3/turn.py`
   - Current code applies choice lock from the selected action after the turn, even if the move never actually executed.
   - Bad cases include flinch, full paralysis, sleep skip, freeze skip, faint-before-moving, Focus Punch fail.
   - Required fix:
@@ -31,23 +31,20 @@ This file tracks the highest-priority bugs, mechanics mismatches, and follow-up 
 
 ## Priority 1 — mechanics mismatches / search-model issues
 
-- [ ] Fix **forced-switch entry effects** for `Roar` / `Whirlwind` in `gen3/executor.py`
+- [x] Fix **forced-switch entry effects** for `Roar` / `Whirlwind` in `gen3/executor.py`
   - Current implementation directly changes active index and explicitly skips entry effects.
   - This is inconsistent with the rest of the engine if switch-in hazards/effects are modeled.
   - Apply switch-in processing consistently (Spikes, weather abilities, Intimidate, etc. as applicable to your ruleset).
 
-- [ ] Revisit **Sleep Clause** in `gen3/executor.py`
+- [x] Revisit **Sleep Clause** in `gen3/executor.py`
   - Current engine prevents sleep if another Pokémon on the target team is already asleep.
   - README describes this as a **Battle Tower rules** engine, so this may be the wrong ruleset.
-  - Decide whether this engine targets:
-    - Battle Tower rules
-    - competitive clauses
-    - configurable rule modes
+  - Decision: Battle Tower rules — Sleep Clause removed.
 
-- [ ] Fix **search depth semantics** in `gen3/search.py`
+- [x] Fix **search depth semantics** in `gen3/search.py`
   - `analyze()` currently resolves a root joint action and then calls `search(s, 0)` on the resulting state.
   - This makes depth accounting inconsistent between root and recursive nodes.
-  - Decide on one definition of depth and apply it consistently.
+  - Fixed: `analyze()` now calls `search(s, 1)` so depth is counted consistently.
 
 - [ ] Revisit **damage branching approximation** in `gen3/executor.py`
   - Current model branches mainly on KO vs survive, then averages surviving rolls.

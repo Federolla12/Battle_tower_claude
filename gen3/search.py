@@ -109,20 +109,23 @@ class SearchEngine:
                 return 0.0
             if not p2_has_bench:
                 return 1.0
-            # Both need to switch — treat as simultaneous
-            # (simplification: just take average of all switch combos)
+            # Both need to switch — simultaneous adversarial choice
+            # Solve as a matrix game using the same maximin logic as move selection
             bench_p1 = state.alive_bench("p1")
             bench_p2 = state.alive_bench("p2")
-            total = 0.0
-            count = 0
+            from .turn import execute_switch
+            matrix = {}
             for i in bench_p1:
                 for j in bench_p2:
-                    from .turn import execute_switch
                     s = execute_switch(state, "p1", i)
                     s = execute_switch(s, "p2", j)
-                    total += self.search(s, depth + 1)
-                    count += 1
-            return total / count if count > 0 else 0.5
+                    matrix[(i, j)] = self.search(s, depth + 1)
+            # P1 maximizes guaranteed minimum (maximin)
+            best = max(
+                min(matrix[(i, j)] for j in bench_p2)
+                for i in bench_p1
+            )
+            return best
 
         # One player needs to switch
         if not p1_alive:
@@ -176,7 +179,7 @@ class SearchEngine:
         for a1 in actions_p1:
             for a2 in actions_p2:
                 outcomes = resolve_turn(state, a1, a2)
-                ev = sum(prob * self.search(s, 0)
+                ev = sum(prob * self.search(s, 1)
                          for prob, s in outcomes)
                 matrix[(a1, a2)] = ev
 

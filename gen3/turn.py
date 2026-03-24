@@ -233,7 +233,8 @@ def check_can_move(state: BattleState, player: str
 # ============================================================
 
 def determine_order(state: BattleState,
-                    action_p1: Action, action_p2: Action
+                    action_p1: Action, action_p2: Action,
+                    stochastic: bool = False
                     ) -> Tuple[str, str]:
     """
     Determine who goes first. Returns (first_player, second_player).
@@ -242,7 +243,7 @@ def determine_order(state: BattleState,
     1. Switches always go before moves (priority +6)
     2. Higher priority moves go first
     3. Same priority: faster Pokemon goes first
-    4. Speed tie: 50/50 (we pick p1 for deterministic search)
+    4. Speed tie: random 50/50 when stochastic=True, p1 first otherwise
     """
     is_switch_p1 = action_p1[0] == "switch"
     is_switch_p2 = action_p2[0] == "switch"
@@ -251,7 +252,9 @@ def determine_order(state: BattleState,
     if is_switch_p1 and is_switch_p2:
         spd1 = state.active("p1").effective_speed()
         spd2 = state.active("p2").effective_speed()
-        return ("p1", "p2") if spd1 >= spd2 else ("p2", "p1")
+        if spd1 == spd2:
+            return ("p1", "p2") if (not stochastic or random.random() < 0.5) else ("p2", "p1")
+        return ("p1", "p2") if spd1 > spd2 else ("p2", "p1")
 
     # One switches, one moves
     if is_switch_p1 and not is_switch_p2:
@@ -277,8 +280,31 @@ def determine_order(state: BattleState,
     elif spd2 > spd1:
         return ("p2", "p1")
 
-    # Speed tie: deterministic (p1 first)
+    # Speed tie: random if stochastic, else p1 first
+    if stochastic:
+        return ("p1", "p2") if random.random() < 0.5 else ("p2", "p1")
     return ("p1", "p2")
+
+
+def _is_speed_tie(state: BattleState,
+                  action_p1: Action, action_p2: Action) -> bool:
+    """Return True if the two actions result in a speed tie."""
+    is_switch_p1 = action_p1[0] == "switch"
+    is_switch_p2 = action_p2[0] == "switch"
+    if is_switch_p1 != is_switch_p2:
+        return False  # Switch always beats move, no tie possible
+    if is_switch_p1 and is_switch_p2:
+        spd1 = state.active("p1").effective_speed()
+        spd2 = state.active("p2").effective_speed()
+        return spd1 == spd2
+    # Both using moves: must have same priority and same speed
+    move1 = get_move(action_p1[1])
+    move2 = get_move(action_p2[1])
+    if move1.priority != move2.priority:
+        return False
+    spd1 = state.active("p1").effective_speed()
+    spd2 = state.active("p2").effective_speed()
+    return spd1 == spd2
 
 
 # ============================================================
@@ -358,6 +384,8 @@ def execute_player_action(state: BattleState, player: str,
             # Execute the move
             move_results = execute_single_move(s_conf, player, move)
             for p_move, s_move in move_results:
+                # Choice Band: lock only when move actually fires
+                s_move = _apply_choice_lock(s_move, player, action)
                 results.append((p_status * p_conf * p_move, s_move))
 
     return results
@@ -367,28 +395,16 @@ def execute_player_action(state: BattleState, player: str,
 # Full turn resolution (simultaneous moves)
 # ============================================================
 
-def resolve_turn(state: BattleState,
-                 action_p1: Action, action_p2: Action) -> Dist:
-    """
-    Resolve one full turn with simultaneous action selection.
-
-    Sequence:
-    1. Determine order (switches first, then priority, then speed)
-    2. First player acts
-    3. Second player acts (if alive and not flinched)
-    4. End-of-turn effects
-    5. Choice Band lock for moves used
-
-    Returns probability distribution over resulting states.
-    """
-    first_pl, second_pl = determine_order(state, action_p1, action_p2)
+def _resolve_ordered(state: BattleState,
+                     action_p1: Action, action_p2: Action,
+                     first_pl: str, second_pl: str) -> Dist:
+    """Execute one turn with a fixed move order. Choice Band lock is applied
+    inside execute_player_action only when the move actually fires."""
     first_action = action_p1 if first_pl == "p1" else action_p2
     second_action = action_p2 if first_pl == "p1" else action_p1
 
     first_move = (get_move(first_action[1])
                   if first_action[0] == "move" else None)
-    second_move = (get_move(second_action[1])
-                   if second_action[0] == "move" else None)
 
     # Can the first move flinch?
     can_flinch = (first_move and first_move.effect == "flinch"
@@ -406,37 +422,28 @@ def resolve_turn(state: BattleState,
         # If second player's mon fainted, skip their action
         if not second_mon.alive():
             s1 = apply_end_of_turn(s1)
-            s1 = _apply_choice_lock(s1, first_pl, first_action)
-            s1 = _apply_choice_lock(s1, second_pl, second_action)
             final_results.append((p1, s1))
             continue
 
         # Did the first move directly hit the second player?
-        # (Check by comparing HP or seeing damage tracked)
         second_was_hit = _was_directly_hit(state, s1, second_pl)
 
         # Flinch branching
         if can_flinch and second_was_hit and second_action[0] == "move":
-            # Branch: flinch vs no flinch
             for p_flinch, flinched in [(flinch_rate, True),
                                        (1 - flinch_rate, False)]:
                 if flinched:
-                    # Set flinch flag — second mon can't act
                     flinched_mon = replace(s1.active(second_pl), flinched=True)
                     s_f = s1.set_active(second_pl, flinched_mon)
                     s_f = apply_end_of_turn(s_f)
-                    s_f = _apply_choice_lock(s_f, first_pl, first_action)
                     final_results.append((p1 * p_flinch, s_f))
                 else:
-                    # Second player acts normally
                     second_results = execute_player_action(
                         s1, second_pl, second_action,
                         was_hit=second_was_hit
                     )
                     for p2, s2 in second_results:
                         s2 = apply_end_of_turn(s2)
-                        s2 = _apply_choice_lock(s2, first_pl, first_action)
-                        s2 = _apply_choice_lock(s2, second_pl, second_action)
                         final_results.append((p1 * p_flinch * p2, s2))
         else:
             # No flinch possible — second player acts normally
@@ -446,12 +453,36 @@ def resolve_turn(state: BattleState,
             )
             for p2, s2 in second_results:
                 s2 = apply_end_of_turn(s2)
-                s2 = _apply_choice_lock(s2, first_pl, first_action)
-                s2 = _apply_choice_lock(s2, second_pl, second_action)
                 final_results.append((p1 * p2, s2))
 
-    # Merge identical states
-    return _merge_outcomes(final_results)
+    return final_results
+
+
+def resolve_turn(state: BattleState,
+                 action_p1: Action, action_p2: Action) -> Dist:
+    """
+    Resolve one full turn with simultaneous action selection.
+
+    Sequence:
+    1. Determine order (switches first, then priority, then speed)
+    2. First player acts
+    3. Second player acts (if alive and not flinched)
+    4. End-of-turn effects
+    5. Choice Band lock applied only when move actually executes
+
+    Speed ties are branched 50/50 for correct game-theoretic evaluation.
+    Returns probability distribution over resulting states.
+    """
+    if _is_speed_tie(state, action_p1, action_p2):
+        # Branch both orderings with equal probability
+        r1 = _resolve_ordered(state, action_p1, action_p2, "p1", "p2")
+        r2 = _resolve_ordered(state, action_p1, action_p2, "p2", "p1")
+        combined = [(0.5 * p, s) for p, s in r1] + [(0.5 * p, s) for p, s in r2]
+        return _merge_outcomes(combined)
+
+    first_pl, second_pl = determine_order(state, action_p1, action_p2)
+    return _merge_outcomes(_resolve_ordered(state, action_p1, action_p2,
+                                            first_pl, second_pl))
 
 
 def _was_directly_hit(old_state: BattleState,
@@ -506,7 +537,8 @@ def simulate_turn_fast(state: BattleState,
     Simulate one turn with random dice rolls. No probability branching.
     Much faster than resolve_turn — used for MC rollouts.
     """
-    first_pl, second_pl = determine_order(state, action_p1, action_p2)
+    first_pl, second_pl = determine_order(state, action_p1, action_p2,
+                                          stochastic=True)
     first_action = action_p1 if first_pl == "p1" else action_p2
     second_action = action_p2 if first_pl == "p1" else action_p1
 
@@ -535,8 +567,6 @@ def simulate_turn_fast(state: BattleState,
 
     # End of turn
     s = apply_end_of_turn(s)
-    s = _apply_choice_lock(s, first_pl, first_action)
-    s = _apply_choice_lock(s, second_pl, second_action)
 
     return s
 
@@ -629,8 +659,9 @@ def _sim_player_action(state: BattleState, player: str,
     for prob, s in results:
         cumulative += prob
         if r <= cumulative:
-            return s, True
-    return results[-1][1], True
+            # Choice Band: lock only when move actually fires
+            return _apply_choice_lock(s, player, action), True
+    return _apply_choice_lock(results[-1][1], player, action), True
 
 
 # ============================================================

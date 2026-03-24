@@ -416,8 +416,7 @@ def execute_status_move(state: BattleState, player: str,
     eff = move.effect
 
     if eff == "taunt":
-        if target.substitute_hp > 0:
-            return [(1.0, state)]  # Gen 3: Taunt blocked by Sub? No actually it goes through.
+        # Gen 3: Taunt is not blocked by Substitute
         new_t = replace(target, taunt_turns=3)
         return [(1.0, state.set_active(target_player, new_t))]
 
@@ -596,13 +595,10 @@ def execute_status_move(state: BattleState, player: str,
 
     elif eff == "sleep_status":
         # Spore / Hypnosis (accuracy checked by caller)
+        # Battle Tower rules: no Sleep Clause
         if target.substitute_hp > 0:
             return [(1.0, state)]
         if target.status is not None:
-            return [(1.0, state)]
-        # Sleep Clause: only one sleeping mon per team
-        opp_team = state.get_team(target_player)
-        if any(m.status == "sleep" for m in opp_team if m is not target):
             return [(1.0, state)]
         # Random duration 1-4 turns (equal probability)
         results = []
@@ -848,14 +844,13 @@ def execute_status_move(state: BattleState, player: str,
         if not alternatives:
             return [(1.0, state)]
         # Branch equally over each possible switch-in
+        # Apply full switch-in processing: clears outgoing volatiles,
+        # applies Spikes/entry abilities (Intimidate, Sand Stream, etc.)
+        from .turn import execute_switch  # local import to avoid circularity
         p = 1.0 / len(alternatives)
         results = []
         for idx in alternatives:
-            # Directly update active index (no entry effects for Roar-forced switch)
-            if target_player == "p1":
-                new_s = replace(state, active_p1=idx)
-            else:
-                new_s = replace(state, active_p2=idx)
+            new_s = execute_switch(state, target_player, idx)
             results.append((p, new_s))
         return results
 
