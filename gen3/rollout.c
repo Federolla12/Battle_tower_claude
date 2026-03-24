@@ -259,10 +259,13 @@ static int calc_dmg(Mon*a,Mon*d,MV_t*mv,int w,int crit,int refl,int ls){
 }
 
 /* ── Execute damage move ─────────────────────────────────────────── */
+/* Returns: -1 = missed (accuracy check failed), 0 = no damage (immune/0 BP),
+ *           1 = hit (sub absorbed or direct hit).
+ * The Choice-lock caller uses -1 to distinguish "didn't fire" from "fired but missed". */
 static int exec_dmg(State*s,int p,int mid){
     if(mid<0||mid>=NMV)return 0;
     MV_t*mv=&MV[mid];Mon*a=&AM(s,p);int o=1-p;Mon*d=&AM(s,o);
-    if(mv->acc>0&&mv->acc<100&&ri(100)>=mv->acc)return 0;
+    if(mv->acc>0&&mv->acc<100&&ri(100)>=mv->acc)return -1; /* MISS — distinct from immune */
     int crit=ri(16)==0;
     int dmg=calc_dmg(a,d,mv,s->weath,crit,s->refl[o],s->ls[o]);
     if(!dmg){if(mv->boom)a->hp=0;return 0;}
@@ -397,7 +400,7 @@ static void exec_st(State*s,int p,int mid){
     /* ── Status-inflicting ── */
     case EF_SLEEP_ST:
         if(d->sub>0||d->st)break;
-        d->st=ST_SLEEP;d->st_t=2;chk_berry(d);break;
+        d->st=ST_SLEEP;d->st_t=1+ri(4);chk_berry(d);break; /* Gen 3: 1–4 turns random */
     /* ── Fixed damage ── */
     case EF_OHKO:
         if(d->ab==AB_STURDY||d->sub>0)break;
@@ -430,10 +433,11 @@ static void exec_st(State*s,int p,int mid){
     }
 }
 
+/* Returns -1 on miss, ≥0 otherwise (forwarded from exec_dmg / always 1 for status). */
 static int exec_mv(State*s,int p,int mid){
     if(mid<0||mid>=NMV)return 0;
     if(MV[mid].bp>0)return exec_dmg(s,p,mid);
-    exec_st(s,p,mid);return 0;
+    exec_st(s,p,mid);return 1; /* status moves always count as "fired" for lock */
 }
 
 /* ── Switch ──────────────────────────────────────────────────────── */
@@ -488,6 +492,11 @@ static void eot(State*s){
         /* misc reset */
         if(m->taunt>0)m->taunt--;
         m->flinch=0;m->ldmg=0;m->lphys=0;
+    }
+    /* screen countdown */
+    for(int p=0;p<2;p++){
+        if(s->refl[p]>0)s->refl[p]--;
+        if(s->ls[p]>0)s->ls[p]--;
     }
     /* weather countdown */
     if(s->weath_t>0){s->weath_t--;if(s->weath_t==0)s->weath=0;}
@@ -595,16 +604,21 @@ static void sim_turn(State*s,Act a0,Act a1){
             else if(MV[a1.id].pri>MV[a0.id].pri)first=1;
             else{int s0=espd(AM(s,0).spe,AM(s,0).ss,AM(s,0).st);
                  int s1=espd(AM(s,1).spe,AM(s,1).ss,AM(s,1).st);
-                 first=s0>=s1?0:1;}
+                 /* Fix: speed ties are broken randomly 50/50, not always P1-first */
+                 if(s0>s1)first=0;else if(s1>s0)first=1;else first=ri(2);}
         }
     } else {
         int s0=espd(AM(s,0).spe,AM(s,0).ss,AM(s,0).st);
         int s1=espd(AM(s,1).spe,AM(s,1).ss,AM(s,1).st);
-        first=s0>=s1?0:1;
+        /* Fix: speed ties are broken randomly 50/50, not always P1-first */
+        if(s0>s1)first=0;else if(s1>s0)first=1;else first=ri(2);
     }
     int second=1-first;
     Act fa=first?a1:a0, sa=first?a0:a1;
     int hit2=0,acted=0;
+    /* did_move[pp]: 1 if pp's move actually fired (not missed, not skipped).
+     * Used for Choice Band/Specs lock: a miss must not lock the move. */
+    int did_move[2]={0,0};
     Mon*fm=&AM(s,first);
     if(fm->hp>0){
         if(fa.type==1){do_sw(s,first,fa.id);acted=1;}
@@ -623,9 +637,12 @@ static void sim_turn(State*s,Act a0,Act a1){
             }
             if(can){
                 int oh=AM(s,second).hp;
-                exec_mv(s,first,mid);
+                int mv_ret=exec_mv(s,first,mid);
                 hit2=AM(s,second).hp<oh;
                 acted=1;
+                /* Only count as "fired" if exec_mv didn't return miss (-1).
+                 * Status moves return 1, damaging moves return -1 on miss. */
+                if(mv_ret>=0)did_move[first]=1;
             }
         }
     }
@@ -651,14 +668,19 @@ static void sim_turn(State*s,Act a0,Act a1){
             if(can&&sm->st==ST_FREEZE){
                 if(ri(5)==0){sm->st=ST_NONE;sm->st_t=0;}else can=0;
             }
-            if(can)exec_mv(s,second,mid);
+            if(can){
+                int mv_ret=exec_mv(s,second,mid);
+                if(mv_ret>=0)did_move[second]=1;
+            }
         }
     }
     eot(s);
-    /* Choice Band/Specs lock */
+    /* Choice Band/Specs lock.
+     * Fix: only lock when the move actually fired (did_move[pp]==1).
+     * A miss, paralysis skip, sleep skip, or freeze-stay must NOT lock. */
     for(int pp=0;pp<2;pp++){
         Act act=pp==first?fa:sa;
-        if(!act.type){
+        if(!act.type&&did_move[pp]){
             Mon*mm=&AM(s,pp);
             if((mm->item==IT_CB||mm->item==IT_CSPEC)&&!mm->item_c&&mm->mlock<0&&mm->hp>0)
                 mm->mlock=act.id;
