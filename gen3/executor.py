@@ -1012,6 +1012,7 @@ def execute_status_move(state: BattleState, player: str,
 
     # --- Stubs (no-op — complex mechanics not fully modelled) ---
     # attract, baton_pass,
+    # safeguard, attract, protect, endure, baton_pass,
     # destiny_bond, skill_swap, trick, memento, encore, disable, perish_song,
     # trap, follow_me, metronome, role_play, recycle, grudge, spite, torment,
     # imprison, evasion_plus1, acc_minus1
