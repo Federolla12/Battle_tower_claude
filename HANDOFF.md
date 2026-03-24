@@ -14,12 +14,18 @@ It includes a web UI (Flask + vanilla JS) where the user controls both sides —
 ```bash
 git clone https://github.com/Federolla12/Battle_tower_claude.git
 cd Battle_tower_claude
-gcc -O3 -shared -o gen3/rollout.dll gen3/rollout.c   # Windows
-# or: gcc -O3 -shared -fPIC -o gen3/rollout.so gen3/rollout.c -lm   # Linux
+gcc -O3 -shared -fopenmp -o gen3/rollout.dll gen3/rollout.c   # Windows
+# or: gcc -O3 -shared -fPIC -fopenmp -o gen3/rollout.so gen3/rollout.c -lm   # Linux
 pip install flask
 python server.py   # opens http://localhost:5000
 # or: python main.py   # CLI analysis only
 ```
+
+### Current status notes
+
+- Speed ties are now modeled as 50/50 order branches in exact search and randomized in stochastic rollout flow.
+- `/api/resolve` now samples outcomes by probability (legacy endpoint kept for compatibility).
+- Background analysis has timeout protection to avoid wedging the UI if deep stages run too long.
 
 ## Architecture
 
@@ -114,15 +120,15 @@ typedef struct {
 **Enum mappings** between Python strings and C ints are defined in `c_rollout.py` (TYPE_MAP, STATUS_MAP, ITEM_MAP, ABILITY_MAP, MOVE_MAP). When adding new Pokemon/moves, both the C enums and the Python mapping dicts must be updated.
 
 **Compiling:**
-- Windows: `gcc -O3 -shared -o gen3/rollout.dll gen3/rollout.c`
-- Linux: `gcc -O3 -shared -fPIC -o gen3/rollout.so gen3/rollout.c -lm`
+- Windows: `gcc -O3 -shared -fopenmp -o gen3/rollout.dll gen3/rollout.c`
+- Linux: `gcc -O3 -shared -fPIC -fopenmp -o gen3/rollout.so gen3/rollout.c -lm`
 - The `EXPORT` macro handles `__declspec(dllexport)` on Windows.
 
 ### The web UI (server.py + static/index.html)
 
 **server.py** is a Flask app with these endpoints:
 - `GET /api/state` — returns serialized game state, legal actions for both players, analysis results, battle log
-- `POST /api/resolve` — takes `{p1: ["move","Hidden Power"], p2: ["move","Rock Slide"]}`, resolves the turn (picks most likely outcome), starts background analysis
+- `POST /api/resolve` — takes `{p1: ["move","Hidden Power"], p2: ["move","Rock Slide"]}`, resolves the turn by sampling outcome probability, starts background analysis
 - `POST /api/switch` — forced switch after KO: `{player: "p1", idx: 2}`
 - `POST /api/undo` — pops state_history stack
 - `POST /api/reset` — reinitializes game
@@ -242,7 +248,7 @@ Metagross   155   187   150   103   111   134
 
 ## Known Issues & Bugs
 
-1. **Turn resolution picks "most likely" outcome instead of random sampling.** In `server.py /api/resolve`, the code does `outcomes.sort(key=lambda x:-x[0]); game_state = outcomes[0][1]`. This means crits/misses/secondary effects never actually happen in the interactive UI — it always picks the most common outcome. Should sample from the distribution instead.
+1. **Damage branching remains an approximation in some lines.** The engine tracks KO-sensitive and representative damage branches for tractability, so some HP-threshold edge cases are simplified.
 
 2. **The web UI can get stuck** if the analysis thread crashes or takes too long. The polling continues but no new analysis appears. Need error handling and timeouts.
 
@@ -254,7 +260,7 @@ Metagross   155   187   150   103   111   134
 
 6. **Counter tracks "last damage taken" but resets each turn.** If a move like Substitute absorbs damage, Counter correctly sees 0 physical damage. However, multi-hit scenarios within a turn aren't handled.
 
-7. **Speed ties are deterministic** (P1 always wins). Should be 50/50 random, but for search purposes deterministic is fine.
+7. **No broad regression test suite yet.** Several high-risk mechanics are implemented but need dedicated automated tests to prevent future regressions.
 
 ## What's NOT Implemented (Planned for v2)
 

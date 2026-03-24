@@ -19,6 +19,7 @@ Teams are 3 Pokemon separated by blank lines.
 """
 
 import re
+from typing import TypedDict
 from .stats import BASE_STATS, SPECIES_TYPES
 from .moves import MOVE_DB
 from .natures import NATURES
@@ -258,23 +259,45 @@ def _parse_stats(text: str) -> dict:
     return result
 
 
-def validate_team(mons: list[dict]) -> list[str]:
-    """Return a list of warning strings (non-fatal issues)."""
-    warnings = []
+class TeamWarning(TypedDict):
+    code: str
+    message: str
+    species: str
+
+
+def validate_team(mons: list[dict]) -> list[TeamWarning]:
+    """Return non-fatal team warnings in a structured format."""
+    warnings: list[TeamWarning] = []
     species_seen = set()
     for mon in mons:
         sp = mon["species"]
         if sp in species_seen:
-            warnings.append(f"Duplicate species: {sp}")
+            warnings.append({
+                "code": "duplicate_species",
+                "message": f"Duplicate species: {sp}",
+                "species": sp,
+            })
         species_seen.add(sp)
 
         if not mon.get("ability"):
-            warnings.append(f"{sp}: No ability specified — will use empty string")
+            warnings.append({
+                "code": "missing_ability",
+                "message": f"{sp}: No ability specified — will use empty string",
+                "species": sp,
+            })
 
         if mon.get("item") == "None" or not mon.get("item"):
-            warnings.append(f"{sp}: No item (or unknown item) — will have no item")
+            warnings.append({
+                "code": "missing_item",
+                "message": f"{sp}: No item (or unknown item) — will have no item",
+                "species": sp,
+            })
 
         if len(mon["moves"]) < 4:
-            warnings.append(f"{sp}: Only {len(mon['moves'])} move(s) specified")
+            warnings.append({
+                "code": "incomplete_moveset",
+                "message": f"{sp}: Only {len(mon['moves'])} move(s) specified",
+                "species": sp,
+            })
 
     return warnings
