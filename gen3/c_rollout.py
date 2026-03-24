@@ -15,9 +15,9 @@ _lib_path = os.path.join(_dir, _lib_name)
 if not os.path.exists(_lib_path):
     print(f"ERROR: C extension not found at {_lib_path}")
     if sys.platform == "win32":
-        print(f"  gcc -O3 -shared -o gen3\\rollout.dll gen3\\rollout.c")
+        print(f"  gcc -O3 -shared -fopenmp -o gen3\\rollout.dll gen3\\rollout.c")
     else:
-        print(f"  gcc -O3 -shared -fPIC -o gen3/rollout.so gen3/rollout.c -lm")
+        print(f"  gcc -O3 -shared -fPIC -fopenmp -o gen3/rollout.so gen3/rollout.c -lm")
     sys.exit(1)
 
 _lib = ctypes.CDLL(_lib_path)

@@ -4,6 +4,7 @@ Both sides controlled by the user (chess analysis style).
 """
 import sys, os, json, time, random, threading, traceback
 from flask import Flask, jsonify, request, send_from_directory
+from dataclasses import dataclass, field, replace
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gen3.state import make_pokemon, make_battle, BattleState
@@ -15,7 +16,6 @@ from gen3.moves import get_move
 from gen3.damage import calc_damage, Conditions
 from gen3.types import type_effectiveness
 from gen3.team_parser import parse_showdown_paste, validate_team
-from dataclasses import replace
 import functools
 
 @functools.lru_cache(maxsize=1)
@@ -27,21 +27,27 @@ def _load_bf_sets():
 
 app = Flask(__name__, static_folder="static")
 
+@dataclass
+class GameSession:
+    """Mutable server session state for one local analysis board."""
+    game_state: BattleState | None = None
+    analysis_result: dict | None = None
+    analysis_depth: int = 0
+    analysis_running: bool = False
+    analysis_current_depth: int = -1
+    analysis_error: str | None = None
+    analysis_thread: threading.Thread | None = None
+    log_entries: list = field(default_factory=list)
+    state_history: list = field(default_factory=list)
+    redo_stack: list = field(default_factory=list)
+    pending_outcomes: list = field(default_factory=list)
+
+
 # ============================================================
-# Global state
+# Global server lock + singleton session
 # ============================================================
 lock = threading.Lock()
-game_state = None
-analysis_result = None
-analysis_depth = 0
-analysis_running = False
-analysis_current_depth = -1   # depth currently being computed
-analysis_error = None
-analysis_thread = None
-log_entries = []
-state_history = []   # for undo
-redo_stack = []      # for redo
-pending_outcomes = []  # cached from last /api/outcomes call
+SESSION = GameSession()
 
 DEFAULT_TEAM1 = [
     dict(species="Skarmory",nature="Impish",evs={"hp":252,"def":232,"spe":24},ivs={"spa":30,"spd":30},moves=["Hidden Power","Taunt","Counter","Toxic"],item="Leftovers",ability="Keen Eye"),
@@ -70,15 +76,14 @@ def build_teams():
     return _mons_from_data(t1_data), _mons_from_data(t2_data)
 
 def init_game():
-    global game_state, analysis_result, analysis_depth, log_entries, state_history, redo_stack, pending_outcomes
     t1, t2 = build_teams()
-    game_state = make_battle(t1, t2)
-    analysis_result = None
-    analysis_depth = 0
-    log_entries = []
-    state_history = []
-    redo_stack = []
-    pending_outcomes = []
+    SESSION.game_state = make_battle(t1, t2)
+    SESSION.analysis_result = None
+    SESSION.analysis_depth = 0
+    SESSION.log_entries = []
+    SESSION.state_history = []
+    SESSION.redo_stack = []
+    SESSION.pending_outcomes = []
 
 # ============================================================
 # Background analysis
@@ -86,8 +91,7 @@ def init_game():
 ANALYSIS_TIMEOUT = 60  # seconds — skip remaining stages after this
 
 def run_analysis(state):
-    global analysis_result, analysis_depth, analysis_running, analysis_error, analysis_current_depth
-    analysis_running = True
+    SESSION.analysis_running = True
     try:
         # With OpenMP parallel rollouts (~450K games/sec on 8 cores):
         #   depth 0 mc=500:  ~0.1s  — instant baseline
@@ -100,33 +104,32 @@ def run_analysis(state):
             if time.time() - t_start > ANALYSIS_TIMEOUT:
                 break
             with lock:
-                if game_state is not state:
+                if SESSION.game_state is not state:
                     return
-                analysis_current_depth = d
+                SESSION.analysis_current_depth = d
             random.seed(int(time.time()*1000) + d)
             eng = SearchEngine(max_depth=d, mc_rollouts=mc)
             r = eng.analyze(state)
             with lock:
-                if game_state is state:
-                    analysis_result = r
-                    analysis_depth = d
+                if SESSION.game_state is state:
+                    SESSION.analysis_result = r
+                    SESSION.analysis_depth = d
     except Exception as e:
         traceback.print_exc()
         with lock:
-            if game_state is state:
-                analysis_error = str(e)
+            if SESSION.game_state is state:
+                SESSION.analysis_error = str(e)
     finally:
-        analysis_running = False
+        SESSION.analysis_running = False
 
 def start_analysis():
-    global analysis_thread, analysis_result, analysis_depth, analysis_error, analysis_current_depth
-    analysis_result = None
-    analysis_depth = -1
-    analysis_current_depth = -1
-    analysis_error = None
-    s = game_state
-    analysis_thread = threading.Thread(target=run_analysis, args=(s,), daemon=True)
-    analysis_thread.start()
+    SESSION.analysis_result = None
+    SESSION.analysis_depth = -1
+    SESSION.analysis_current_depth = -1
+    SESSION.analysis_error = None
+    s = SESSION.game_state
+    SESSION.analysis_thread = threading.Thread(target=run_analysis, args=(s,), daemon=True)
+    SESSION.analysis_thread.start()
 
 # ============================================================
 # Serialization
@@ -356,8 +359,8 @@ def _get_turn_events(old_state, new_state, a1=None, a2=None):
 
 def ser_analysis(r, s):
     if not r:
-        if analysis_error:
-            return {"error": analysis_error, "running": False, "moves": [],
+        if SESSION.analysis_error:
+            return {"error": SESSION.analysis_error, "running": False, "moves": [],
                     "positionValue": 50.0, "depth": -1, "nodes": 0}
         return None
     moves = []
@@ -369,9 +372,9 @@ def ser_analysis(r, s):
         moves.append({"name":name,"winPct":round(info["guaranteed_win_pct"]*100,1),
                        "counter":ctr_name,"isBest":a==r["best_move_p1"]})
     return {"moves":moves,"positionValue":round(r["position_value"]*100,1),
-            "depth":analysis_depth,"currentDepth":analysis_current_depth,
-            "nodes":r["nodes_searched"],"running":analysis_running,
-            "error": analysis_error}
+            "depth":SESSION.analysis_depth,"currentDepth":SESSION.analysis_current_depth,
+            "nodes":r["nodes_searched"],"running":SESSION.analysis_running,
+            "error": SESSION.analysis_error}
 
 # ============================================================
 # API
@@ -383,15 +386,15 @@ def index():
 @app.route("/api/state")
 def get_state():
     with lock:
-        s = game_state
+        s = SESSION.game_state
         return jsonify({
             "state": ser_state(s),
             "p1Actions": ser_actions(s,"p1"),
             "p2Actions": ser_actions(s,"p2"),
-            "analysis": ser_analysis(analysis_result, s),
-            "log": log_entries,
-            "canUndo": len(state_history) > 0,
-            "canRedo": len(redo_stack) > 0,
+            "analysis": ser_analysis(SESSION.analysis_result, s),
+            "log": SESSION.log_entries,
+            "canUndo": len(SESSION.state_history) > 0,
+            "canRedo": len(SESSION.redo_stack) > 0,
         })
 
 @app.route("/api/outcomes", methods=["POST"])
@@ -401,7 +404,6 @@ def get_outcomes():
     Groups similar outcomes by observable state, returns sorted by probability.
     Does NOT advance game state.
     """
-    global pending_outcomes
     data = request.json
     a1 = tuple(data["p1"])
     a2 = tuple(data["p2"])
@@ -409,16 +411,16 @@ def get_outcomes():
     if a2[0] == "switch": a2 = ("switch", int(a2[1]))
 
     with lock:
-        if game_state.is_terminal():
+        if SESSION.game_state.is_terminal():
             return jsonify({"error": "Game is over"}), 400
-        old = game_state
+        old = SESSION.game_state
         try:
-            outcomes = resolve_turn(game_state, a1, a2)
+            outcomes = resolve_turn(SESSION.game_state, a1, a2)
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
-        pending_outcomes = outcomes  # cache for /api/commit
+        SESSION.pending_outcomes = outcomes  # cache for /api/commit
 
         # Group by observable key (active mon HP/status/stages/confusion + weather)
         groups = {}
@@ -455,24 +457,23 @@ def commit_outcome():
     Commit a specific outcome from the last /api/outcomes call.
     Body: {"idx": <index into pending_outcomes>, "n1": "move name", "n2": "move name"}
     """
-    global game_state, log_entries, state_history, redo_stack, pending_outcomes
     data = request.json
     idx = int(data["idx"])
     n1 = data.get("n1", "?")
     n2 = data.get("n2", "?")
 
     with lock:
-        if idx < 0 or idx >= len(pending_outcomes):
+        if idx < 0 or idx >= len(SESSION.pending_outcomes):
             return jsonify({"error": "Invalid outcome index"}), 400
 
-        state_history.append(game_state)
-        redo_stack.clear()
-        old = game_state
-        game_state = pending_outcomes[idx][1]
-        pending_outcomes = []
+        SESSION.state_history.append(SESSION.game_state)
+        SESSION.redo_stack.clear()
+        old = SESSION.game_state
+        SESSION.game_state = SESSION.pending_outcomes[idx][1]
+        SESSION.pending_outcomes = []
 
-        events = describe_outcome(old, game_state)
-        log_entries.append({"turn": old.turn_number, "p1": n1, "p2": n2, "events": events})
+        events = describe_outcome(old, SESSION.game_state)
+        SESSION.log_entries.append({"turn": old.turn_number, "p1": n1, "p2": n2, "events": events})
         start_analysis()
 
     return jsonify({"ok": True})
@@ -481,7 +482,6 @@ def commit_outcome():
 @app.route("/api/resolve", methods=["POST"])
 def resolve():
     """Legacy: resolve randomly. Kept for backward compat."""
-    global game_state, log_entries, state_history, redo_stack
     data = request.json
     a1 = tuple(data["p1"])
     a2 = tuple(data["p2"])
@@ -489,23 +489,23 @@ def resolve():
     if a2[0]=="switch": a2=("switch",int(a2[1]))
 
     with lock:
-        if game_state.is_terminal():
+        if SESSION.game_state.is_terminal():
             return jsonify({"error":"Game is over"}),400
-        state_history.append(game_state)
-        redo_stack.clear()
-        old = game_state
+        SESSION.state_history.append(SESSION.game_state)
+        SESSION.redo_stack.clear()
+        old = SESSION.game_state
         try:
-            outcomes = resolve_turn(game_state, a1, a2)
+            outcomes = resolve_turn(SESSION.game_state, a1, a2)
             probs = [p for p, _ in outcomes]
-            game_state = random.choices([s for _, s in outcomes], weights=probs, k=1)[0]
+            SESSION.game_state = random.choices([s for _, s in outcomes], weights=probs, k=1)[0]
         except Exception as e:
             traceback.print_exc()
-            state_history.pop()
+            SESSION.state_history.pop()
             return jsonify({"error": str(e)}), 500
         n1 = a1[1] if a1[0]=="move" else f"Switch→{old.team_p1[a1[1]].species}"
         n2 = a2[1] if a2[0]=="move" else f"Switch→{old.team_p2[a2[1]].species}"
-        events = describe_outcome(old, game_state)
-        log_entries.append({"turn":old.turn_number,"p1":n1,"p2":n2,"events":events})
+        events = describe_outcome(old, SESSION.game_state)
+        SESSION.log_entries.append({"turn":old.turn_number,"p1":n1,"p2":n2,"events":events})
         start_analysis()
     return jsonify({"ok":True})
 
@@ -520,13 +520,12 @@ def edit_state():
     }
     Any field omitted = no change for that field.
     """
-    global game_state, state_history, redo_stack
     data = request.json
 
     with lock:
-        state_history.append(game_state)
-        redo_stack.clear()
-        s = game_state
+        SESSION.state_history.append(SESSION.game_state)
+        SESSION.redo_stack.clear()
+        s = SESSION.game_state
 
         for player in ["p1", "p2"]:
             edits = data.get(player, [])
@@ -557,8 +556,8 @@ def edit_state():
             turns = 10000 if w else 0
             s = replace(s, weather=w, weather_turns=turns)
 
-        game_state = s
-        log_entries.append({"turn": s.turn_number, "p1": "✎ edit", "p2": "—",
+        SESSION.game_state = s
+        SESSION.log_entries.append({"turn": s.turn_number, "p1": "✎ edit", "p2": "—",
                              "events": ["State edited manually"]})
         start_analysis()
 
@@ -568,42 +567,39 @@ def edit_state():
 @app.route("/api/switch", methods=["POST"])
 def forced_switch():
     """Handle a forced switch (after a KO)."""
-    global game_state, state_history, redo_stack
     data = request.json
     player = data["player"]  # "p1" or "p2"
     idx = int(data["idx"])
 
     with lock:
-        state_history.append(game_state)
-        redo_stack.clear()
-        game_state = execute_switch(game_state, player, idx)
-        log_entries.append({"turn":game_state.turn_number,
-                            "p1": f"Switch→{game_state.active(player).species}" if player=="p1" else "—",
-                            "p2": f"Switch→{game_state.active(player).species}" if player=="p2" else "—"})
+        SESSION.state_history.append(SESSION.game_state)
+        SESSION.redo_stack.clear()
+        SESSION.game_state = execute_switch(SESSION.game_state, player, idx)
+        SESSION.log_entries.append({"turn":SESSION.game_state.turn_number,
+                            "p1": f"Switch→{SESSION.game_state.active(player).species}" if player=="p1" else "—",
+                            "p2": f"Switch→{SESSION.game_state.active(player).species}" if player=="p2" else "—"})
         start_analysis()
     return jsonify({"ok":True})
 
 @app.route("/api/undo", methods=["POST"])
 def undo():
-    global game_state, log_entries, state_history, redo_stack
     with lock:
-        if not state_history:
+        if not SESSION.state_history:
             return jsonify({"error":"Nothing to undo"}),400
-        redo_stack.append(game_state)
-        game_state = state_history.pop()
-        if log_entries:
-            log_entries.pop()
+        SESSION.redo_stack.append(SESSION.game_state)
+        SESSION.game_state = SESSION.state_history.pop()
+        if SESSION.log_entries:
+            SESSION.log_entries.pop()
         start_analysis()
     return jsonify({"ok":True})
 
 @app.route("/api/redo", methods=["POST"])
 def redo():
-    global game_state, state_history, redo_stack
     with lock:
-        if not redo_stack:
+        if not SESSION.redo_stack:
             return jsonify({"error":"Nothing to redo"}),400
-        state_history.append(game_state)
-        game_state = redo_stack.pop()
+        SESSION.state_history.append(SESSION.game_state)
+        SESSION.game_state = SESSION.redo_stack.pop()
         start_analysis()
     return jsonify({"ok":True})
 

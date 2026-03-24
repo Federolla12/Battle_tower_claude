@@ -717,8 +717,9 @@ async function previewTeam(player){
       if(player==='t1')t1Valid=false;else t2Valid=false; }
     else {
       let names = d.team.map(m=>m.species).join(', ');
-      let w = d.warnings.length ? ` (${d.warnings.length} warning${d.warnings.length>1?'s':''})` : '';
-      prev.textContent='✓ '+names+w;
+      let warnMsgs = (d.warnings||[]).map(w => (typeof w === 'string' ? w : w.message)).filter(Boolean);
+      let w = warnMsgs.length ? ` (${warnMsgs.length} warning${warnMsgs.length>1?'s':''})` : '';
+      prev.textContent='✓ '+names+w+(warnMsgs.length ? `: ${warnMsgs.join(' | ')}` : '');
       prev.className = d.warnings.length ? 'modal-preview warn' : 'modal-preview ok';
       if(player==='t1')t1Valid=true;else t2Valid=true;
     }
